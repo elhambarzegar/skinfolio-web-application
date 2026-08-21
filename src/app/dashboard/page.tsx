@@ -2,7 +2,27 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { SignOutButton } from "./sign-out-button";
+
+const BUCKET_STYLE: Record<"high" | "medium" | "low", string> = {
+  high: "bg-ok/10 text-ok",
+  medium: "bg-warn/10 text-warn",
+  low: "bg-danger/10 text-danger",
+};
+
+const BUCKET_LABEL: Record<"high" | "medium" | "low", string> = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence — unverified",
+};
+
+const ORIGIN_LABEL: Record<string, string> = {
+  OPEN_BEAUTY_FACTS: "Open Beauty Facts",
+  BRAND_SITE: "brand site",
+  RETAILER: "retailer listing",
+  WEB_SEARCH: "web search",
+};
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -14,7 +34,7 @@ export default async function DashboardPage() {
   const intake = await prisma.intakeResponse.findFirst({
     where: { userId: session.user.id },
     orderBy: { createdAt: "desc" },
-    include: { ownedProducts: true },
+    include: { ownedProducts: { include: { currentSource: true } } },
   });
 
   return (
@@ -96,12 +116,33 @@ export default async function DashboardPage() {
                 {intake.ownedProducts.length === 0 ? (
                   <p className="mt-2 text-[14px] text-ink-3">None listed.</p>
                 ) : (
-                  <ul className="mt-2 flex flex-col gap-1">
-                    {intake.ownedProducts.map((p) => (
-                      <li key={p.id} className="text-[14px] text-ink">
-                        {p.brand} — {p.name}
-                      </li>
-                    ))}
+                  <ul className="mt-2 flex flex-col gap-2">
+                    {intake.ownedProducts.map((p) => {
+                      const source = p.currentSource;
+                      const bucket = source ? confidenceBucket(source.confidenceScore) : null;
+                      return (
+                        <li
+                          key={p.id}
+                          className="flex items-center justify-between gap-3 py-1.5"
+                        >
+                          <span className="text-[14px] text-ink">
+                            {p.brand} — {p.name}
+                          </span>
+                          {bucket && source ? (
+                            <span
+                              className={`text-[12px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${BUCKET_STYLE[bucket]}`}
+                              title={`${ORIGIN_LABEL[source.origin] ?? source.origin}, checked ${source.fetchedAt.toLocaleDateString()}`}
+                            >
+                              {BUCKET_LABEL[bucket]}
+                            </span>
+                          ) : (
+                            <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap bg-chip text-ink-3">
+                              No ingredient data yet
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveProductSource } from "@/lib/productLookup";
 
 type OwnedProductInput = { brand: string; name: string };
 
@@ -39,6 +40,8 @@ export async function POST(req: Request) {
     );
   }
 
+  const newProductIds: string[] = [];
+
   const intake = await prisma.$transaction(async (tx) => {
     const productIds: string[] = [];
 
@@ -56,6 +59,7 @@ export async function POST(req: Request) {
           data: { brand, name, step: "OTHER" },
         }));
 
+      if (!existing) newProductIds.push(product.id);
       productIds.push(product.id);
     }
 
@@ -68,6 +72,12 @@ export async function POST(req: Request) {
       },
     });
   });
+
+  // Best-effort: look up ingredient data for any product we haven't seen
+  // before. A lookup failure (no match, no API key, network error) leaves
+  // the product without a source — that's the honest "no data yet" state,
+  // not a reason to fail the intake submission.
+  await Promise.allSettled(newProductIds.map((id) => resolveProductSource(id)));
 
   return NextResponse.json({ id: intake.id });
 }
