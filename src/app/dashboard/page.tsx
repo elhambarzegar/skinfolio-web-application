@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { SignOutButton } from "./sign-out-button";
+import { BuildRoutineButton } from "./build-routine-button";
 
 const BUCKET_STYLE: Record<"high" | "medium" | "low", string> = {
   high: "bg-ok/10 text-ok",
@@ -36,6 +37,21 @@ export default async function DashboardPage() {
     orderBy: { createdAt: "desc" },
     include: { ownedProducts: { include: { currentSource: true } } },
   });
+
+  const activeRoutine = intake
+    ? await prisma.routine.findFirst({
+        where: { userId: session.user.id, status: "ACTIVE" },
+        include: { steps: true },
+      })
+    : null;
+
+  const draftRoutine =
+    intake && !activeRoutine
+      ? await prisma.routine.findFirst({
+          where: { userId: session.user.id, status: "DRAFT" },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
 
   return (
     <div className="flex-1 flex flex-col">
@@ -78,10 +94,42 @@ export default async function DashboardPage() {
               </Link>
             </div>
             <p className="mt-1 text-[14px] text-ink-2">
-              Saved {intake.createdAt.toLocaleDateString()}. The routine engine
-              that turns this into an AM/PM plan is the next piece we&rsquo;re
-              building — nothing below is a placeholder.
+              Saved {intake.createdAt.toLocaleDateString()}.
             </p>
+
+            <div className="mt-6">
+              {activeRoutine ? (
+                <div className="bg-bg-raise border border-line rounded-[10px] p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[14px] font-bold text-ink">Your routine is active</p>
+                    <p className="mt-0.5 text-[13px] text-ink-2">
+                      {activeRoutine.steps.length} step
+                      {activeRoutine.steps.length === 1 ? "" : "s"} — AM and PM.
+                    </p>
+                  </div>
+                  <Link
+                    href={`/routine/${activeRoutine.id}`}
+                    className="text-[13px] font-semibold text-accent whitespace-nowrap"
+                  >
+                    View routine
+                  </Link>
+                </div>
+              ) : draftRoutine ? (
+                <div className="bg-warn/10 border border-warn/40 rounded-[10px] p-4 flex items-center justify-between gap-4">
+                  <p className="text-[14px] font-semibold text-ink">
+                    Your routine is ready to review.
+                  </p>
+                  <Link
+                    href={`/routine/${draftRoutine.id}`}
+                    className="text-[13px] font-bold bg-accent text-accent-ink px-4 py-2 rounded-[6px] whitespace-nowrap"
+                  >
+                    Review it
+                  </Link>
+                </div>
+              ) : (
+                <BuildRoutineButton />
+              )}
+            </div>
 
             <div className="mt-8 flex flex-col gap-6">
               <section>
