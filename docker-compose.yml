@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: skinfolio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: skinfolio
+      POSTGRES_PASSWORD: skinfolio_dev
+      POSTGRES_DB: skinfolio
+    ports:
+      - "5432:5432"
+    volumes:
+      - skinfolio-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  skinfolio-postgres-data:

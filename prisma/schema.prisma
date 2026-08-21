@@ -1,0 +1,178 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Accounts -----------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+
+  intakeResponses IntakeResponse[]
+  routines        Routine[]
+  checkIns        CheckIn[]
+}
+
+// --- Intake ---------------------------------------------------------------
+
+model IntakeResponse {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  concerns        String[]
+  questionnaire   String
+  ownedProducts   Product[] @relation("IntakeOwnedProducts")
+  createdAt       DateTime @default(now())
+}
+
+// --- Product catalog --------------------------------------------------------
+
+enum ProductStep {
+  CLEANSE
+  TREAT
+  MOISTURIZE
+  PROTECT
+  OTHER
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  step        ProductStep
+  brand       String
+  name        String
+  priceCad    Float?
+  size        String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  sources          ProductSource[]
+  currentSourceId  String?         @unique
+  currentSource    ProductSource?  @relation("CurrentSource", fields: [currentSourceId], references: [id])
+
+  intakeAppearances IntakeResponse[] @relation("IntakeOwnedProducts")
+  routineSteps      RoutineStep[]
+}
+
+enum SourceOrigin {
+  OPEN_BEAUTY_FACTS
+  BRAND_SITE
+  RETAILER
+  WEB_SEARCH
+}
+
+enum DatePrecision {
+  EXACT
+  MONTH
+  YEAR
+  UNKNOWN
+}
+
+enum SourceStatus {
+  PENDING
+  VERIFIED
+  SUPERSEDED
+  REJECTED
+}
+
+// Append-only audit trail: every lookup (structured or web-fallback) writes
+// a new row here. Rows are never edited or deleted, only superseded.
+model ProductSource {
+  id                    String        @id @default(cuid())
+  productId             String
+  product               Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  origin                SourceOrigin
+  sourceUrl             String?
+  ingredientsInci       String
+  rawExtract            String
+  fetchedAt             DateTime      @default(now())
+  publishedAt           DateTime?
+  publishedAtPrecision  DatePrecision @default(UNKNOWN)
+  confidenceScore       Int
+  confidenceBreakdown   Json
+  status                SourceStatus  @default(PENDING)
+  supersededById        String?       @unique
+  supersededBy          ProductSource? @relation("SourceHistory", fields: [supersededById], references: [id])
+  supersedes            ProductSource? @relation("SourceHistory")
+  currentForProduct     Product?      @relation("CurrentSource")
+}
+
+// --- Routines ---------------------------------------------------------------
+
+enum RoutineStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Routine {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    RoutineStatus @default(DRAFT)
+  rationale String
+  createdAt DateTime      @default(now())
+
+  steps    RoutineStep[]
+  checkIns CheckIn[]
+}
+
+enum TimeOfDay {
+  AM
+  PM
+}
+
+model RoutineStep {
+  id                 String    @id @default(cuid())
+  routineId          String
+  routine            Routine   @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product   @relation(fields: [productId], references: [id])
+  timeOfDay           TimeOfDay
+  order               Int
+  ackLowConfidence    Boolean?
+  decidedAt           DateTime?
+}
+
+// --- Check-ins & escalation --------------------------------------------------
+
+enum Adherence {
+  DONE
+  SKIPPED
+}
+
+model CheckIn {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routineId     String?
+  routine       Routine?  @relation(fields: [routineId], references: [id])
+  dayNumber     Int
+  timeOfDay     TimeOfDay
+  adherence     Adherence
+  symptomsText  String?
+  createdAt     DateTime  @default(now())
+
+  escalation EscalationFlag?
+}
+
+model EscalationFlag {
+  id         String    @id @default(cuid())
+  checkInId  String    @unique
+  checkIn    CheckIn   @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+  reason     String
+  resolved   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+}
