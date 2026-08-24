@@ -27,6 +27,12 @@ export async function PATCH(
   if (!step) {
     return NextResponse.json({ error: "Step not found." }, { status: 404 });
   }
+  if (step.routine.status !== "DRAFT") {
+    return NextResponse.json(
+      { error: "This routine has already been accepted and can't be edited here." },
+      { status: 400 }
+    );
+  }
 
   const body = await req.json().catch(() => null);
   const action = body?.action;

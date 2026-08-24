@@ -156,14 +156,16 @@ export function RoutineReview({
                                 {step.rationale}
                               </p>
                             </div>
-                            <button
-                              type="button"
-                              disabled={busyStepId === step.id}
-                              onClick={() => patchStep(step.id, { action: "remove" })}
-                              className="text-[12px] text-ink-3 hover:text-danger whitespace-nowrap disabled:opacity-40"
-                            >
-                              Remove
-                            </button>
+                            {status === "DRAFT" && (
+                              <button
+                                type="button"
+                                disabled={busyStepId === step.id}
+                                onClick={() => patchStep(step.id, { action: "remove" })}
+                                className="text-[12px] text-ink-3 hover:text-danger whitespace-nowrap disabled:opacity-40"
+                              >
+                                Remove
+                              </button>
+                            )}
                           </div>
 
                           {step.confidence && (
@@ -174,7 +176,7 @@ export function RoutineReview({
                             </span>
                           )}
 
-                          {needsDecision(step) && (
+                          {status === "DRAFT" && needsDecision(step) && (
                             <div className="mt-3 border border-warn/40 bg-warn/10 rounded-[6px] px-3 py-2.5">
                               <p className="text-[13px] text-ink">
                                 We&rsquo;re not confident about this product&rsquo;s

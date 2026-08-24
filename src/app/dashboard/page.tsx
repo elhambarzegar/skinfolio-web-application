@@ -38,20 +38,32 @@ export default async function DashboardPage() {
     include: { ownedProducts: { include: { currentSource: true } } },
   });
 
-  const activeRoutine = intake
+  const currentRoutine = intake
     ? await prisma.routine.findFirst({
-        where: { userId: session.user.id, status: "ACTIVE" },
+        where: { userId: session.user.id, status: { in: ["ACTIVE", "PAUSED"] } },
+        orderBy: { createdAt: "desc" },
         include: { steps: true },
       })
     : null;
 
   const draftRoutine =
-    intake && !activeRoutine
+    intake && !currentRoutine
       ? await prisma.routine.findFirst({
           where: { userId: session.user.id, status: "DRAFT" },
           orderBy: { createdAt: "desc" },
         })
       : null;
+
+  const checkIns = currentRoutine
+    ? await prisma.checkIn.findMany({
+        where: { routineId: currentRoutine.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: { escalation: true },
+      })
+    : [];
+
+  const latestUnresolvedEscalation = checkIns.find((c) => c.escalation && !c.escalation.resolved)?.escalation;
 
   return (
     <div className="flex-1 flex flex-col">
@@ -98,21 +110,49 @@ export default async function DashboardPage() {
             </p>
 
             <div className="mt-6">
-              {activeRoutine ? (
+              {currentRoutine?.status === "PAUSED" ? (
+                <div className="bg-danger/10 border border-danger/40 rounded-[10px] p-4">
+                  <p className="text-[14px] font-bold text-ink">Your routine is paused</p>
+                  {latestUnresolvedEscalation && (
+                    <p className="mt-1 text-[13px] text-ink-2 leading-relaxed">
+                      {latestUnresolvedEscalation.reason}
+                    </p>
+                  )}
+                  <div className="mt-3 flex items-center gap-4">
+                    <Link
+                      href={`/routine/${currentRoutine.id}`}
+                      className="text-[13px] font-semibold text-accent"
+                    >
+                      View routine
+                    </Link>
+                    <Link href="/checkin" className="text-[13px] font-semibold text-accent">
+                      Log another check-in
+                    </Link>
+                  </div>
+                </div>
+              ) : currentRoutine ? (
                 <div className="bg-bg-raise border border-line rounded-[10px] p-4 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[14px] font-bold text-ink">Your routine is active</p>
                     <p className="mt-0.5 text-[13px] text-ink-2">
-                      {activeRoutine.steps.length} step
-                      {activeRoutine.steps.length === 1 ? "" : "s"} — AM and PM.
+                      {currentRoutine.steps.length} step
+                      {currentRoutine.steps.length === 1 ? "" : "s"} — AM and PM.
                     </p>
                   </div>
-                  <Link
-                    href={`/routine/${activeRoutine.id}`}
-                    className="text-[13px] font-semibold text-accent whitespace-nowrap"
-                  >
-                    View routine
-                  </Link>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      href="/checkin"
+                      className="text-[13px] font-bold bg-accent text-accent-ink px-4 py-2 rounded-[6px] whitespace-nowrap"
+                    >
+                      Log check-in
+                    </Link>
+                    <Link
+                      href={`/routine/${currentRoutine.id}`}
+                      className="text-[13px] font-semibold text-accent whitespace-nowrap"
+                    >
+                      View routine
+                    </Link>
+                  </div>
                 </div>
               ) : draftRoutine ? (
                 <div className="bg-warn/10 border border-warn/40 rounded-[10px] p-4 flex items-center justify-between gap-4">
@@ -130,6 +170,41 @@ export default async function DashboardPage() {
                 <BuildRoutineButton />
               )}
             </div>
+
+            {checkIns.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">
+                  Recent check-ins
+                </h2>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {checkIns.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-center justify-between gap-3 py-1.5 border-b border-line last:border-b-0"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-[13px] text-ink">
+                          Day {c.dayNumber} · {c.timeOfDay === "AM" ? "Morning" : "Evening"} ·{" "}
+                          {c.adherence === "DONE" ? "Done" : "Skipped"}
+                        </span>
+                        {c.symptomsText && (
+                          <p className="text-[12px] text-ink-3 truncate">{c.symptomsText}</p>
+                        )}
+                      </div>
+                      {c.escalation && (
+                        <span
+                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            c.escalation.resolved ? "bg-chip text-ink-3" : "bg-danger/10 text-danger"
+                          }`}
+                        >
+                          Flagged
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="mt-8 flex flex-col gap-6">
               <section>
