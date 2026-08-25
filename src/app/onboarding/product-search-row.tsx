@@ -32,6 +32,7 @@ export function ProductSearchRow({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,6 +40,7 @@ export function ProductSearchRow({
     if (mode !== "search") return;
     if (query.trim().length < 2) {
       setResults([]);
+      setSearchError(null);
       setOpen(false);
       return;
     }
@@ -49,16 +51,24 @@ export function ProductSearchRow({
       const controller = new AbortController();
       abortRef.current = controller;
       setLoading(true);
+      setSearchError(null);
       try {
         const res = await fetch(`/api/products/search?q=${encodeURIComponent(query.trim())}`, {
           signal: controller.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setSearchError(body?.error ?? `Search failed (${res.status}). You can still add this manually below.`);
+          setOpen(true);
+          return;
+        }
         const data = await res.json();
         setResults(data.products ?? []);
         setOpen(true);
-      } catch {
-        // aborted or network error — leave existing results as-is
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setSearchError("Couldn't reach the server. You can still add this manually below.");
+        setOpen(true);
       } finally {
         setLoading(false);
       }
@@ -169,10 +179,11 @@ export function ProductSearchRow({
         <div className="flex-1 relative">
           <input
             type="text"
+            autoComplete="off"
             placeholder="Search for a product, e.g. CeraVe Moisturizing Cream"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => results.length > 0 && setOpen(true)}
+            onFocus={() => (results.length > 0 || searchError) && setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             className="w-full border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
           />
@@ -181,10 +192,14 @@ export function ProductSearchRow({
               {loading && (
                 <div className="px-3 py-2 text-[13px] text-ink-3">Searching…</div>
               )}
-              {!loading && results.length === 0 && query.trim().length >= 2 && (
+              {!loading && searchError && (
+                <div className="px-3 py-2 text-[13px] text-danger">{searchError}</div>
+              )}
+              {!loading && !searchError && results.length === 0 && query.trim().length >= 2 && (
                 <div className="px-3 py-2 text-[13px] text-ink-3">No matches yet.</div>
               )}
               {!loading &&
+                !searchError &&
                 results.map((r) => (
                   <button
                     key={r.id}
