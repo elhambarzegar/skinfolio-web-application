@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CONCERN_OPTIONS } from "@/lib/concerns";
 import {
@@ -63,8 +63,9 @@ export function OnboardingForm() {
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(null);
   const [priority, setPriority] = useState<Priority | null>(null);
   const [complexityPreference, setComplexityPreference] = useState<ComplexityPreference | null>(null);
-  const [ownedProducts, setOwnedProducts] = useState<OwnedProductEntry[]>([
-    { brand: "", name: "", productId: null },
+  const nextRowId = useRef(0);
+  const [ownedProducts, setOwnedProducts] = useState<(OwnedProductEntry & { rowId: number })[]>([
+    { rowId: nextRowId.current++, brand: "", name: "", productId: null },
   ]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -75,16 +76,19 @@ export function OnboardingForm() {
     );
   }
 
-  function updateProductEntry(index: number, entry: OwnedProductEntry) {
-    setOwnedProducts((prev) => prev.map((p, i) => (i === index ? entry : p)));
+  function updateProductEntry(rowId: number, entry: OwnedProductEntry) {
+    setOwnedProducts((prev) => prev.map((p) => (p.rowId === rowId ? { ...entry, rowId } : p)));
   }
 
   function addProductRow() {
-    setOwnedProducts((prev) => [...prev, { brand: "", name: "", productId: null }]);
+    setOwnedProducts((prev) => [
+      ...prev,
+      { rowId: nextRowId.current++, brand: "", name: "", productId: null },
+    ]);
   }
 
-  function removeProductRow(index: number) {
-    setOwnedProducts((prev) => prev.filter((_, i) => i !== index));
+  function removeProductRow(rowId: number) {
+    setOwnedProducts((prev) => prev.filter((p) => p.rowId !== rowId));
   }
 
   function goNext() {
@@ -125,9 +129,9 @@ export function OnboardingForm() {
     setError(null);
     setSubmitting(true);
 
-    const cleanedProducts = ownedProducts.filter(
-      (p) => p.brand.trim() && p.name.trim()
-    );
+    const cleanedProducts = ownedProducts
+      .filter((p) => p.brand.trim() && p.name.trim())
+      .map(({ brand, name, productId }) => ({ brand, name, productId }));
 
     try {
       const res = await fetch("/api/intake", {
@@ -297,12 +301,12 @@ export function OnboardingForm() {
             against the rest.
           </p>
           <div className="mt-6 flex flex-col gap-4">
-            {ownedProducts.map((product, i) => (
+            {ownedProducts.map((product) => (
               <ProductSearchRow
-                key={i}
+                key={product.rowId}
                 entry={product}
-                onChange={(entry) => updateProductEntry(i, entry)}
-                onRemove={() => removeProductRow(i)}
+                onChange={(entry) => updateProductEntry(product.rowId, entry)}
+                onRemove={() => removeProductRow(product.rowId)}
                 showRemove={ownedProducts.length > 1}
               />
             ))}

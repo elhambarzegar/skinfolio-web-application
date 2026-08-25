@@ -10,48 +10,48 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "You need to be logged in." }, { status: 401 });
   }
 
-  const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
-  if (q.length < 2) {
-    return NextResponse.json({ products: [] });
+  const url = new URL(req.url);
+  const brand = url.searchParams.get("brand")?.trim() ?? "";
+  const q = url.searchParams.get("q")?.trim() ?? "";
+
+  if (!brand) {
+    return NextResponse.json({ error: "A brand is required to search products." }, { status: 400 });
   }
 
-  // Prefix matches first (feels "smart"), then fill remaining slots with
-  // substring matches — cheap to compute without needing a trigram index,
-  // fine at the hundreds-of-brands / thousands-of-products scale this is
-  // built for.
-  const prefixMatches = await prisma.product.findMany({
-    where: {
-      OR: [
-        { brand: { startsWith: q, mode: "insensitive" } },
-        { name: { startsWith: q, mode: "insensitive" } },
-      ],
-    },
-    select: { id: true, brand: true, name: true, step: true },
-    take: LIMIT,
-    orderBy: [{ brand: "asc" }, { name: "asc" }],
-  });
+  const nameFilter = q ? { name: { contains: q, mode: "insensitive" as const } } : {};
+
+  // Prefix matches on the name first, then fill remaining slots with
+  // substring matches — scoped to one brand, so even a short query is a
+  // useful filter.
+  const prefixMatches = q
+    ? await prisma.product.findMany({
+        where: {
+          brand: { equals: brand, mode: "insensitive" },
+          name: { startsWith: q, mode: "insensitive" },
+        },
+        select: { id: true, brand: true, name: true, step: true },
+        take: LIMIT,
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   let results = prefixMatches;
 
   if (results.length < LIMIT) {
     const excludeIds = results.map((p) => p.id);
-    const substringMatches = await prisma.product.findMany({
+    const rest = await prisma.product.findMany({
       where: {
         AND: [
           { id: { notIn: excludeIds } },
-          {
-            OR: [
-              { brand: { contains: q, mode: "insensitive" } },
-              { name: { contains: q, mode: "insensitive" } },
-            ],
-          },
+          { brand: { equals: brand, mode: "insensitive" } },
+          nameFilter,
         ],
       },
       select: { id: true, brand: true, name: true, step: true },
       take: LIMIT - results.length,
-      orderBy: [{ brand: "asc" }, { name: "asc" }],
+      orderBy: { name: "asc" },
     });
-    results = [...results, ...substringMatches];
+    results = [...results, ...rest];
   }
 
   return NextResponse.json({ products: results });
