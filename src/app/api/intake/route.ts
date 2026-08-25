@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveProductSource } from "@/lib/productLookup";
 import { EXPERIENCE_OPTIONS, PRIORITY_OPTIONS, COMPLEXITY_OPTIONS } from "@/lib/intakeProfile";
 
-type OwnedProductInput = { brand: string; name: string };
+type OwnedProductInput = { brand: string; name: string; productId: string | null };
 
 const EXPERIENCE_LEVELS = EXPERIENCE_OPTIONS.map((o) => o.value);
 const PRIORITIES = PRIORITY_OPTIONS.map((o) => o.value);
@@ -38,7 +38,11 @@ export async function POST(req: Request) {
             (p as OwnedProductInput).brand.trim() !== "" &&
             (p as OwnedProductInput).name.trim() !== ""
         )
-        .map((p: OwnedProductInput) => ({ brand: p.brand.trim(), name: p.name.trim() }))
+        .map((p: OwnedProductInput) => ({
+          brand: p.brand.trim(),
+          name: p.name.trim(),
+          productId: typeof p.productId === "string" ? p.productId : null,
+        }))
     : [];
 
   if (concerns.length === 0) {
@@ -62,7 +66,16 @@ export async function POST(req: Request) {
   const intake = await prisma.$transaction(async (tx) => {
     const productIds: string[] = [];
 
-    for (const { brand, name } of ownedProducts) {
+    for (const { brand, name, productId } of ownedProducts) {
+      // A productId means the user picked this from search results — trust
+      // it (after confirming it's real) rather than re-matching by string.
+      const matchedById = productId ? await tx.product.findUnique({ where: { id: productId } }) : null;
+
+      if (matchedById) {
+        productIds.push(matchedById.id);
+        continue;
+      }
+
       const existing = await tx.product.findFirst({
         where: {
           brand: { equals: brand, mode: "insensitive" },

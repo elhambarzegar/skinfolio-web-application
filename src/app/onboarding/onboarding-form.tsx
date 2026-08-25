@@ -11,8 +11,7 @@ import {
   type Priority,
   type ComplexityPreference,
 } from "@/lib/intakeProfile";
-
-type OwnedProduct = { brand: string; name: string };
+import { ProductSearchRow, type OwnedProductEntry } from "./product-search-row";
 
 const TOTAL_STEPS = 8;
 
@@ -64,8 +63,8 @@ export function OnboardingForm() {
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(null);
   const [priority, setPriority] = useState<Priority | null>(null);
   const [complexityPreference, setComplexityPreference] = useState<ComplexityPreference | null>(null);
-  const [ownedProducts, setOwnedProducts] = useState<OwnedProduct[]>([
-    { brand: "", name: "" },
+  const [ownedProducts, setOwnedProducts] = useState<OwnedProductEntry[]>([
+    { brand: "", name: "", productId: null },
   ]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -76,14 +75,12 @@ export function OnboardingForm() {
     );
   }
 
-  function updateProduct(index: number, field: keyof OwnedProduct, value: string) {
-    setOwnedProducts((prev) =>
-      prev.map((p, i) => (i === index ? { ...p, [field]: value } : p))
-    );
+  function updateProductEntry(index: number, entry: OwnedProductEntry) {
+    setOwnedProducts((prev) => prev.map((p, i) => (i === index ? entry : p)));
   }
 
   function addProductRow() {
-    setOwnedProducts((prev) => [...prev, { brand: "", name: "" }]);
+    setOwnedProducts((prev) => [...prev, { brand: "", name: "", productId: null }]);
   }
 
   function removeProductRow(index: number) {
@@ -299,34 +296,15 @@ export function OnboardingForm() {
             Optional. Add anything currently in your routine — we&rsquo;ll check it
             against the rest.
           </p>
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-6 flex flex-col gap-4">
             {ownedProducts.map((product, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Brand"
-                  value={product.brand}
-                  onChange={(e) => updateProduct(i, "brand", e.target.value)}
-                  className="flex-1 border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
-                />
-                <input
-                  type="text"
-                  placeholder="Product name"
-                  value={product.name}
-                  onChange={(e) => updateProduct(i, "name", e.target.value)}
-                  className="flex-[1.5] border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
-                />
-                {ownedProducts.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeProductRow(i)}
-                    aria-label="Remove product"
-                    className="text-[13px] text-ink-3 hover:text-danger px-2"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
+              <ProductSearchRow
+                key={i}
+                entry={product}
+                onChange={(entry) => updateProductEntry(i, entry)}
+                onRemove={() => removeProductRow(i)}
+                showRemove={ownedProducts.length > 1}
+              />
             ))}
             <button
               type="button"
