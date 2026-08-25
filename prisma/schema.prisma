@@ -26,14 +26,38 @@ model User {
 
 // --- Intake ---------------------------------------------------------------
 
+enum ExperienceLevel {
+  NO_ROUTINE
+  INCONSISTENT
+  HAS_ROUTINE_UNSURE
+  KNOWLEDGEABLE
+}
+
+enum Priority {
+  USE_OWNED
+  ONE_BETTER_PRODUCT
+  BEST_RESULTS
+  MINIMIZE_SPEND
+}
+
+enum ComplexityPreference {
+  SIMPLEST
+  FEW_EXTRA_OK
+  ENJOYS_SKINCARE
+}
+
 model IntakeResponse {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  concerns        String[]
-  questionnaire   String
-  ownedProducts   Product[] @relation("IntakeOwnedProducts")
-  createdAt       DateTime @default(now())
+  id                   String                @id @default(cuid())
+  userId               String
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  concerns             String[]
+  questionnaire        String
+  experienceLevel      ExperienceLevel?
+  priority             Priority?
+  complexityPreference ComplexityPreference?
+  safetyAcknowledged   Boolean               @default(false)
+  ownedProducts        Product[]             @relation("IntakeOwnedProducts")
+  createdAt            DateTime              @default(now())
 }
 
 // --- Product catalog --------------------------------------------------------

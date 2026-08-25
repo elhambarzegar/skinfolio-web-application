@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
 import { INGREDIENT_RULES, INTAKE_SAFETY_TRIGGERS } from "./policy";
 
 const MODEL = "claude-opus-5";
@@ -59,7 +60,16 @@ Rules for building the routine:
 - Some products are marked "[no ingredient data available]" or "[low-confidence ingredient data]" — you may still place them in the routine by their step, but say so plainly in that step's rationale. Never claim to have checked ingredients you don't have.
 - Note real gaps in "gaps" (e.g. no sunscreen owned despite a daytime routine, no moisturizer). Do not invent a product to fill a gap — just name it.
 - "overallRationale" should be readable by a person in under a minute — plain language, no jargon.
-- Every rationale should name the specific rule or reason behind that step's placement, not just restate what the product is.`;
+- Every rationale should name the specific rule or reason behind that step's placement, not just restate what the product is.
+
+Use the person's stated profile (experience level, priority, and complexity preference, given below) to shape tone and emphasis, not to change the safety rules:
+- Low experience ("I don't really have a skincare routine" / "inconsistently") → keep rationale simple, avoid jargon, explain basics briefly.
+- High experience ("I already know skincare fairly well") → you can be more technical and concise.
+- Priority "Use what I already own" → lean toward keeping owned products even if not ideal, note in gaps rather than excluding.
+- Priority "Get the best possible results" → be more willing to exclude a mediocre owned product in favor of leaving a clear gap noted, rather than including it just because they own it.
+- Priority "Spend as little as possible" or "Buy one better product instead of several" → phrase gaps in a way that respects that (e.g. "one option" rather than a shopping list — you still never name or invent a specific product to buy).
+- Complexity "I prefer the simplest routine possible" → if an owned product is optional/marginal for their concerns, consider excluding it and saying why, rather than adding steps.
+- Complexity "I enjoy skincare" or "okay with a few extra steps" → include more owned products if they genuinely fit, don't over-simplify.`;
 
 export async function generateRoutine(userId: string): Promise<RoutineGenerationResult> {
   const intake = await prisma.intakeResponse.findFirst({
@@ -103,11 +113,17 @@ export async function generateRoutine(userId: string): Promise<RoutineGeneration
     return `- id: ${p.id} | ${p.brand} — ${p.name} | catalog step: ${p.step} | ingredients: ${ingredientNote}`;
   });
 
+  const profileLines = [
+    intake.experienceLevel && `Experience: ${EXPERIENCE_LABEL[intake.experienceLevel]}`,
+    intake.priority && `Priority: ${PRIORITY_LABEL[intake.priority]}`,
+    intake.complexityPreference && `Complexity preference: ${COMPLEXITY_LABEL[intake.complexityPreference]}`,
+  ].filter(Boolean);
+
   const userContent = `Concerns: ${intake.concerns.join(", ")}
 
 About your skin: ${intake.questionnaire}
 
-Products owned:
+${profileLines.length > 0 ? profileLines.join("\n") + "\n\n" : ""}Products owned:
 ${productLines.join("\n")}`;
 
   const client = new Anthropic();

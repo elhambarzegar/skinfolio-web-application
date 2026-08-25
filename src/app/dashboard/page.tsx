@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
 import { SignOutButton } from "./sign-out-button";
 import { BuildRoutineButton } from "./build-routine-button";
 
@@ -24,6 +25,7 @@ const ORIGIN_LABEL: Record<string, string> = {
   RETAILER: "retailer listing",
   WEB_SEARCH: "web search",
 };
+
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -231,6 +233,19 @@ export default async function DashboardPage() {
                   {intake.questionnaire}
                 </p>
               </section>
+
+              {(intake.experienceLevel || intake.priority || intake.complexityPreference) && (
+                <section>
+                  <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">
+                    Your profile
+                  </h2>
+                  <ul className="mt-2 flex flex-col gap-1 text-[14px] text-ink">
+                    {intake.experienceLevel && <li>{EXPERIENCE_LABEL[intake.experienceLevel]}</li>}
+                    {intake.priority && <li>{PRIORITY_LABEL[intake.priority]}</li>}
+                    {intake.complexityPreference && <li>{COMPLEXITY_LABEL[intake.complexityPreference]}</li>}
+                  </ul>
+                </section>
+              )}
 
               <section>
                 <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">

@@ -3,16 +3,67 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CONCERN_OPTIONS } from "@/lib/concerns";
+import {
+  EXPERIENCE_OPTIONS,
+  PRIORITY_OPTIONS,
+  COMPLEXITY_OPTIONS,
+  type ExperienceLevel,
+  type Priority,
+  type ComplexityPreference,
+} from "@/lib/intakeProfile";
 
 type OwnedProduct = { brand: string; name: string };
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 8;
+
+function RadioList<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T | null;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="mt-6 flex flex-col gap-2">
+      {options.map((opt) => {
+        const selected = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`text-left text-[14px] px-4 py-3 rounded-[8px] border flex items-center gap-3 transition-colors ${
+              selected
+                ? "border-accent bg-accent/10 text-ink"
+                : "border-line bg-bg-raise text-ink-2 hover:border-accent"
+            }`}
+          >
+            <span
+              className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                selected ? "border-accent" : "border-line"
+              }`}
+            >
+              {selected && <span className="w-2 h-2 rounded-full bg-accent" />}
+            </span>
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function OnboardingForm() {
   const router = useRouter();
   const [step, setStep] = useState(1);
+  const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
   const [concerns, setConcerns] = useState<string[]>([]);
   const [questionnaire, setQuestionnaire] = useState("");
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(null);
+  const [priority, setPriority] = useState<Priority | null>(null);
+  const [complexityPreference, setComplexityPreference] = useState<ComplexityPreference | null>(null);
   const [ownedProducts, setOwnedProducts] = useState<OwnedProduct[]>([
     { brand: "", name: "" },
   ]);
@@ -41,12 +92,28 @@ export function OnboardingForm() {
 
   function goNext() {
     setError(null);
-    if (step === 1 && concerns.length === 0) {
+    if (step === 1 && !safetyAcknowledged) {
+      setError("Check the box to confirm you understand before continuing.");
+      return;
+    }
+    if (step === 2 && concerns.length === 0) {
       setError("Pick at least one concern to continue.");
       return;
     }
-    if (step === 2 && questionnaire.trim().length < 10) {
+    if (step === 3 && questionnaire.trim().length < 10) {
       setError("A couple sentences helps — at least 10 characters.");
+      return;
+    }
+    if (step === 4 && !experienceLevel) {
+      setError("Pick the option that fits best.");
+      return;
+    }
+    if (step === 5 && !priority) {
+      setError("Pick one to continue.");
+      return;
+    }
+    if (step === 6 && !complexityPreference) {
+      setError("Pick the option that fits best.");
       return;
     }
     setStep((s) => Math.min(s + 1, TOTAL_STEPS));
@@ -69,7 +136,15 @@ export function OnboardingForm() {
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concerns, questionnaire, ownedProducts: cleanedProducts }),
+        body: JSON.stringify({
+          concerns,
+          questionnaire,
+          experienceLevel,
+          priority,
+          complexityPreference,
+          safetyAcknowledged,
+          ownedProducts: cleanedProducts,
+        }),
       });
       const data = await res.json();
 
@@ -87,6 +162,10 @@ export function OnboardingForm() {
     }
   }
 
+  const experienceLabel = EXPERIENCE_OPTIONS.find((o) => o.value === experienceLevel)?.label;
+  const priorityLabel = PRIORITY_OPTIONS.find((o) => o.value === priority)?.label;
+  const complexityLabel = COMPLEXITY_OPTIONS.find((o) => o.value === complexityPreference)?.label;
+
   return (
     <div className="w-full max-w-xl">
       <div className="flex items-center gap-1.5 mb-8">
@@ -101,6 +180,51 @@ export function OnboardingForm() {
       </div>
 
       {step === 1 && (
+        <div>
+          <h1 className="text-[24px] font-bold text-ink">Safety agreement</h1>
+          <p className="mt-1 text-[14px] text-ink-2">
+            Quick read before we start — this sets what Skinfolio can and can&rsquo;t
+            do for you.
+          </p>
+
+          <div className="mt-6 flex flex-col gap-2">
+            {[
+              "Helps organize your skincare routine.",
+              "Explains ingredient interactions.",
+              "Suggests routines based on your goals.",
+            ].map((line) => (
+              <div key={line} className="flex items-start gap-2.5 text-[14px] text-ink">
+                <span className="text-ok mt-0.5">✓</span>
+                {line}
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-5 text-[13px] font-semibold text-ink-2">It does not:</p>
+          <ul className="mt-2 flex flex-col gap-1.5 text-[14px] text-ink-2 list-disc list-inside">
+            <li>diagnose skin conditions</li>
+            <li>prescribe treatments</li>
+            <li>replace a dermatologist</li>
+          </ul>
+
+          <p className="mt-5 text-[13px] text-ink-2 leading-relaxed">
+            If you report pain, bleeding, rapidly changing spots, or other
+            concerning symptoms, we&rsquo;ll recommend seeing a dermatologist.
+          </p>
+
+          <label className="mt-6 flex items-start gap-2.5 text-[14px] text-ink cursor-pointer">
+            <input
+              type="checkbox"
+              checked={safetyAcknowledged}
+              onChange={(e) => setSafetyAcknowledged(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-accent"
+            />
+            I understand.
+          </label>
+        </div>
+      )}
+
+      {step === 2 && (
         <div>
           <h1 className="text-[24px] font-bold text-ink">What are your concerns?</h1>
           <p className="mt-1 text-[14px] text-ink-2">Pick as many as apply.</p>
@@ -126,7 +250,7 @@ export function OnboardingForm() {
         </div>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <div>
           <h1 className="text-[24px] font-bold text-ink">Tell us about your skin</h1>
           <p className="mt-1 text-[14px] text-ink-2">
@@ -142,7 +266,33 @@ export function OnboardingForm() {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
+        <div>
+          <h1 className="text-[24px] font-bold text-ink">Which statement best describes you?</h1>
+          <RadioList options={EXPERIENCE_OPTIONS} value={experienceLevel} onChange={setExperienceLevel} />
+        </div>
+      )}
+
+      {step === 5 && (
+        <div>
+          <h1 className="text-[24px] font-bold text-ink">If possible, I&rsquo;d rather&hellip;</h1>
+          <p className="mt-1 text-[14px] text-ink-2">Select one.</p>
+          <RadioList options={PRIORITY_OPTIONS} value={priority} onChange={setPriority} />
+        </div>
+      )}
+
+      {step === 6 && (
+        <div>
+          <h1 className="text-[24px] font-bold text-ink">Which best describes you?</h1>
+          <RadioList
+            options={COMPLEXITY_OPTIONS}
+            value={complexityPreference}
+            onChange={setComplexityPreference}
+          />
+        </div>
+      )}
+
+      {step === 7 && (
         <div>
           <h1 className="text-[24px] font-bold text-ink">What do you already use?</h1>
           <p className="mt-1 text-[14px] text-ink-2">
@@ -189,7 +339,7 @@ export function OnboardingForm() {
         </div>
       )}
 
-      {step === 4 && (
+      {step === 8 && (
         <div>
           <h1 className="text-[24px] font-bold text-ink">Review</h1>
           <p className="mt-1 text-[14px] text-ink-2">
@@ -218,6 +368,17 @@ export function OnboardingForm() {
                 About your skin
               </h3>
               <p className="mt-2 text-[14px] text-ink leading-relaxed">{questionnaire}</p>
+            </div>
+
+            <div>
+              <h3 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">
+                Your profile
+              </h3>
+              <ul className="mt-2 flex flex-col gap-1 text-[14px] text-ink">
+                <li>{experienceLabel}</li>
+                <li>{priorityLabel}</li>
+                <li>{complexityLabel}</li>
+              </ul>
             </div>
 
             <div>

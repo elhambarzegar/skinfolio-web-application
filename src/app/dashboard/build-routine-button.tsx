@@ -1,25 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
+const LOADING_STEPS = [
+  "Reading your products",
+  "Looking for duplicate ingredients",
+  "Checking ingredient interactions",
+  "Finding gaps",
+  "Building a routine that fits your goal",
+];
+
+const STEP_INTERVAL_MS = 1800;
 
 export function BuildRoutineButton() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [revealedCount, setRevealedCount] = useState(0);
   const [refusal, setRefusal] = useState<{
     severity: "red_flag" | "emergency";
     concern: string;
     routing: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   async function handleClick() {
     setLoading(true);
+    setRevealedCount(1);
     setError(null);
     setRefusal(null);
+
+    intervalRef.current = setInterval(() => {
+      setRevealedCount((c) => Math.min(c + 1, LOADING_STEPS.length));
+    }, STEP_INTERVAL_MS);
+
     try {
       const res = await fetch("/api/routine", { method: "POST" });
       const data = await res.json();
+
+      if (intervalRef.current) clearInterval(intervalRef.current);
 
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
@@ -33,9 +59,11 @@ export function BuildRoutineButton() {
         return;
       }
 
+      setRevealedCount(LOADING_STEPS.length);
       router.push(`/routine/${data.id}`);
       router.refresh();
     } catch {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setError("Couldn't reach the server. Check your connection and try again.");
       setLoading(false);
     }
@@ -63,15 +91,29 @@ export function BuildRoutineButton() {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="max-w-md">
+        <div className="flex flex-col gap-1.5">
+          {LOADING_STEPS.slice(0, revealedCount).map((step) => (
+            <div key={step} className="text-[13px] flex items-center gap-2 text-ink-2">
+              <span className="text-ok">✓</span>
+              {step}…
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <button
         type="button"
         onClick={handleClick}
-        disabled={loading}
-        className="text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90 disabled:opacity-50"
+        className="text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90"
       >
-        {loading ? "Building your routine…" : "Build my routine"}
+        Build my routine
       </button>
       {error && (
         <p className="mt-3 text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2 max-w-md">
