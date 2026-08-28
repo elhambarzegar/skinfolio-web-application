@@ -31,6 +31,18 @@ export function ScanLabelModal({
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setCameraError(
+        "Camera access needs a secure connection. This works at http://localhost:3000 on this computer, but not over plain HTTP from another device (e.g. a phone on the same network) — that needs HTTPS. You can upload a photo instead."
+      );
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("This browser doesn't support camera capture here. You can upload a photo instead.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
@@ -41,8 +53,22 @@ export function ScanLabelModal({
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-    } catch {
-      setCameraError("Camera unavailable — you can upload a photo instead.");
+    } catch (err) {
+      console.error("[ScanLabelModal] getUserMedia failed:", err);
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError") {
+        setCameraError(
+          "Camera permission was denied. Allow camera access for this site in your browser's settings, then try again."
+        );
+      } else if (name === "NotFoundError") {
+        setCameraError("No camera was found on this device. You can upload a photo instead.");
+      } else if (name === "NotReadableError") {
+        setCameraError("The camera is already in use by another app. Close it and try again.");
+      } else {
+        setCameraError(
+          `Camera unavailable${name ? ` (${name})` : ""} — you can upload a photo instead.`
+        );
+      }
     }
   }, []);
 
