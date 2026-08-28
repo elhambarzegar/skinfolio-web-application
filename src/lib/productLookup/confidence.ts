@@ -1,8 +1,12 @@
-export type AuthorityTier = "brand_site" | "structured_db" | "retailer" | "other";
-export type ExtractionTier = "structured" | "labeled" | "inferred";
+export type AuthorityTier = "user_verified" | "brand_site" | "structured_db" | "retailer" | "other";
+export type ExtractionTier = "structured" | "photo_ocr" | "labeled" | "inferred";
 export type DatePrecisionTier = "EXACT" | "MONTH" | "YEAR" | "UNKNOWN";
 
 const AUTHORITY_POINTS: Record<AuthorityTier, number> = {
+  // The user's own physical product, read by them right now — no risk of
+  // matching the wrong formulation/region variant, which every web source
+  // above carries.
+  user_verified: 40,
   brand_site: 40,
   structured_db: 30,
   retailer: 25,
@@ -11,6 +15,10 @@ const AUTHORITY_POINTS: Record<AuthorityTier, number> = {
 
 const EXTRACTION_POINTS: Record<ExtractionTier, number> = {
   structured: 25,
+  // A clearly-read label photo — reliable, but photo quality (blur, glare,
+  // a curved bottle) is a real failure mode structured/labeled text doesn't
+  // have, so it sits just below both.
+  photo_ocr: 20,
   labeled: 18,
   inferred: 8,
 };

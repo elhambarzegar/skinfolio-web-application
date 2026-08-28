@@ -93,6 +93,7 @@ enum SourceOrigin {
   BRAND_SITE
   RETAILER
   WEB_SEARCH
+  USER_PHOTO
 }
 
 enum DatePrecision {
