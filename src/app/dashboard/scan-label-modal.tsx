@@ -19,17 +19,25 @@ export function ScanLabelModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Bumped on every startCamera() call so a call that's still in flight when
+  // a newer one starts (React Strict Mode's dev-only double-invoke, or a
+  // fast retake) can tell it's stale and back off instead of racing the
+  // newer call's video.play().
+  const generationRef = useRef(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const stopCamera = useCallback(() => {
+    generationRef.current++;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
   const startCamera = useCallback(async () => {
+    const myGeneration = ++generationRef.current;
     setCameraError(null);
 
     if (typeof window !== "undefined" && !window.isSecureContext) {
@@ -48,12 +56,29 @@ export function ScanLabelModal({
         video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
+
+      // A newer call superseded this one while we were waiting on the
+      // permission prompt / device open — release what we just got and
+      // let the newer call own the video element.
+      if (myGeneration !== generationRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // Benign when a newer call has since taken over the element —
+          // that's exactly what AbortError here means. Only surface it as
+          // a real failure if this call is still the current one.
+          if (myGeneration === generationRef.current) throw playErr;
+        }
       }
     } catch (err) {
+      if (myGeneration !== generationRef.current) return;
       console.error("[ScanLabelModal] getUserMedia failed:", err);
       const name = err instanceof DOMException ? err.name : "";
       if (name === "NotAllowedError") {
