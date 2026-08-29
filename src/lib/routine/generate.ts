@@ -69,7 +69,9 @@ Use the person's stated profile (experience level, priority, and complexity pref
 - Priority "Get the best possible results" → be more willing to exclude a mediocre owned product in favor of leaving a clear gap noted, rather than including it just because they own it.
 - Priority "Spend as little as possible" or "Buy one better product instead of several" → phrase gaps in a way that respects that (e.g. "one option" rather than a shopping list — you still never name or invent a specific product to buy).
 - Complexity "I prefer the simplest routine possible" → if an owned product is optional/marginal for their concerns, consider excluding it and saying why, rather than adding steps.
-- Complexity "I enjoy skincare" or "okay with a few extra steps" → include more owned products if they genuinely fit, don't over-simplify.`;
+- Complexity "I enjoy skincare" or "okay with a few extra steps" → include more owned products if they genuinely fit, don't over-simplify.
+
+If a previous routine is included below, this is a re-check, not a first build — new or updated ingredient data may have come in since it was made. Compare against it: start "overallRationale" with what's actually different (a step reordered, a product now excluded/included because of new ingredient data, a new gap found or resolved) — or say plainly that nothing needed to change if the products and data are the same. Don't restate the whole previous rationale.`;
 
 export async function generateRoutine(userId: string): Promise<RoutineGenerationResult> {
   const intake = await prisma.intakeResponse.findFirst({
@@ -119,12 +121,25 @@ export async function generateRoutine(userId: string): Promise<RoutineGeneration
     intake.complexityPreference && `Complexity preference: ${COMPLEXITY_LABEL[intake.complexityPreference]}`,
   ].filter(Boolean);
 
+  const previousRoutine = await prisma.routine.findFirst({
+    where: { userId, status: { in: ["ACTIVE", "PAUSED", "ARCHIVED"] } },
+    orderBy: { createdAt: "desc" },
+    include: { steps: { include: { product: true }, orderBy: [{ timeOfDay: "asc" }, { order: "asc" }] } },
+  });
+
+  const previousRoutineBlock =
+    previousRoutine && previousRoutine.steps.length > 0
+      ? `\n\nPrevious routine (built ${previousRoutine.createdAt.toISOString().slice(0, 10)}):
+${previousRoutine.steps.map((s) => `- ${s.timeOfDay} ${s.order}. ${s.product.brand} — ${s.product.name}: ${s.rationale}`).join("\n")}
+Previous overall rationale: ${previousRoutine.rationale}`
+      : "";
+
   const userContent = `Concerns: ${intake.concerns.join(", ")}
 
 About your skin: ${intake.questionnaire}
 
 ${profileLines.length > 0 ? profileLines.join("\n") + "\n\n" : ""}Products owned:
-${productLines.join("\n")}`;
+${productLines.join("\n")}${previousRoutineBlock}`;
 
   const client = new Anthropic();
 

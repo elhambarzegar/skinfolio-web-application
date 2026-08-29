@@ -36,8 +36,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   await prisma.$transaction(async (tx) => {
+    // A paused routine being superseded is just as retired as an active
+    // one — otherwise it's left PAUSED forever with no way back to it.
     await tx.routine.updateMany({
-      where: { userId: session.user.id, status: "ACTIVE" },
+      where: { userId: session.user.id, status: { in: ["ACTIVE", "PAUSED"] } },
       data: { status: "ARCHIVED" },
     });
     await tx.routine.update({

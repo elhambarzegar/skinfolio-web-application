@@ -13,7 +13,7 @@ const LOADING_STEPS = [
 
 const STEP_INTERVAL_MS = 1800;
 
-export function BuildRoutineButton() {
+export function BuildRoutineButton({ label = "Build my routine" }: { label?: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [revealedCount, setRevealedCount] = useState(0);
@@ -113,7 +113,7 @@ export function BuildRoutineButton() {
         onClick={handleClick}
         className="text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90"
       >
-        Build my routine
+        {label}
       </button>
       {error && (
         <p className="mt-3 text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2 max-w-md">

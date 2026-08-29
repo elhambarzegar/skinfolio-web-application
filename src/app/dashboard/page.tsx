@@ -30,13 +30,12 @@ export default async function DashboardPage() {
       })
     : null;
 
-  const draftRoutine =
-    intake && !currentRoutine
-      ? await prisma.routine.findFirst({
-          where: { userId: session.user.id, status: "DRAFT" },
-          orderBy: { createdAt: "desc" },
-        })
-      : null;
+  const draftRoutine = intake
+    ? await prisma.routine.findFirst({
+        where: { userId: session.user.id, status: "DRAFT" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
 
   const checkIns = currentRoutine
     ? await prisma.checkIn.findMany({
@@ -93,7 +92,23 @@ export default async function DashboardPage() {
               Saved {intake.createdAt.toLocaleDateString()}.
             </p>
 
-            <div className="mt-6">
+            <div className="mt-6 flex flex-col gap-3">
+              {draftRoutine && (
+                <div className="bg-warn/10 border border-warn/40 rounded-[10px] p-4 flex items-center justify-between gap-4">
+                  <p className="text-[14px] font-semibold text-ink">
+                    {currentRoutine
+                      ? "An updated routine is ready to review."
+                      : "Your routine is ready to review."}
+                  </p>
+                  <Link
+                    href={`/routine/${draftRoutine.id}`}
+                    className="text-[13px] font-bold bg-accent text-accent-ink px-4 py-2 rounded-[6px] whitespace-nowrap"
+                  >
+                    Review it
+                  </Link>
+                </div>
+              )}
+
               {currentRoutine?.status === "PAUSED" ? (
                 <div className="bg-danger/10 border border-danger/40 rounded-[10px] p-4">
                   <p className="text-[14px] font-bold text-ink">Your routine is paused</p>
@@ -138,21 +153,18 @@ export default async function DashboardPage() {
                     </Link>
                   </div>
                 </div>
-              ) : draftRoutine ? (
-                <div className="bg-warn/10 border border-warn/40 rounded-[10px] p-4 flex items-center justify-between gap-4">
-                  <p className="text-[14px] font-semibold text-ink">
-                    Your routine is ready to review.
+              ) : null}
+
+              {currentRoutine && !draftRoutine && (
+                <div>
+                  <p className="text-[12px] text-ink-3 mb-1.5">
+                    Updated a product&rsquo;s ingredients, or just want a second look?
                   </p>
-                  <Link
-                    href={`/routine/${draftRoutine.id}`}
-                    className="text-[13px] font-bold bg-accent text-accent-ink px-4 py-2 rounded-[6px] whitespace-nowrap"
-                  >
-                    Review it
-                  </Link>
+                  <BuildRoutineButton label="Re-check my routine" />
                 </div>
-              ) : (
-                <BuildRoutineButton />
               )}
+
+              {!currentRoutine && !draftRoutine && <BuildRoutineButton />}
             </div>
 
             {checkIns.length > 0 && (
