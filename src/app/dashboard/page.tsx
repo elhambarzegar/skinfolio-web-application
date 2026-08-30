@@ -4,9 +4,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
+import { RULE_SOURCES } from "@/lib/routine/policy";
 import { SignOutButton } from "./sign-out-button";
 import { BuildRoutineButton } from "./build-routine-button";
 import { OwnedProductsList } from "./owned-products-list";
+import { ProTipsList } from "@/components/pro-tips-list";
 
 
 export default async function DashboardPage() {
@@ -26,9 +28,28 @@ export default async function DashboardPage() {
     ? await prisma.routine.findFirst({
         where: { userId: session.user.id, status: { in: ["ACTIVE", "PAUSED"] } },
         orderBy: { createdAt: "desc" },
-        include: { steps: true },
+        include: {
+          steps: { where: { active: true } },
+          proTips: { where: { status: "PENDING", actionType: { not: "KEEP" } }, orderBy: { createdAt: "asc" } },
+        },
       })
     : null;
+
+  const pendingTips = currentRoutine
+    ? currentRoutine.proTips.map((tip) => {
+        const rule = tip.ruleCitation !== null ? RULE_SOURCES[tip.ruleCitation] : null;
+        return {
+          id: tip.id,
+          routineId: currentRoutine.id,
+          stepId: tip.primaryStepId,
+          summary: tip.summary,
+          actionType: tip.actionType,
+          status: tip.status,
+          ruleLabel: rule ? `Rule ${tip.ruleCitation} — ${rule.label}` : null,
+          ruleUrl: rule?.url ?? null,
+        };
+      })
+    : [];
 
   const draftRoutine = intake
     ? await prisma.routine.findFirst({
@@ -166,6 +187,20 @@ export default async function DashboardPage() {
 
               {!currentRoutine && !draftRoutine && <BuildRoutineButton />}
             </div>
+
+            {pendingTips.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">
+                  Pro Tips awaiting your decision
+                </h2>
+                <p className="mt-1 text-[12px] text-ink-3">
+                  These stay here until you accept or reject them.
+                </p>
+                <div className="mt-2">
+                  <ProTipsList tips={pendingTips} hideResolved />
+                </div>
+              </div>
+            )}
 
             {checkIns.length > 0 && (
               <div className="mt-6">

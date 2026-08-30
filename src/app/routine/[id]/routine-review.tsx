@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { CATEGORY_LABEL } from "@/lib/productCategory";
+import { ProTipsList } from "@/components/pro-tips-list";
+import type { ProTipView } from "@/components/pro-tip-card";
 
 export type RoutineStepView = {
   id: string;
@@ -10,13 +13,19 @@ export type RoutineStepView = {
   order: number;
   rationale: string;
   ackLowConfidence: boolean | null;
-  product: { id: string; brand: string; name: string };
-  confidence: {
-    bucket: "high" | "medium" | "low";
-    score: number;
-    origin: string;
-    fetchedAt: string;
-  } | null;
+  product: { id: string; brand: string; name: string; step: string };
+  confidence: { bucket: "high" | "medium" | "low"; score: number; origin: string; fetchedAt: string } | null;
+  frequencyPerWeek: number;
+  timeCostMinutes: number | null;
+  ownership: "OWNED" | "NEW";
+  proposal: "KEEP" | "REMOVE" | "ADD" | "CHANGE";
+  proposalReason: string | null;
+  ruleLabel: string | null;
+  ruleUrl: string | null;
+  alternativeProduct: { id: string; brand: string; name: string } | null;
+  alternativeFrequency: number | null;
+  budgetAdjustment: "NONE" | "FREQUENCY_REDUCED" | "DROPPED_FOR_BUDGET";
+  budgetAdjustmentReason: string | null;
 };
 
 const BUCKET_STYLE: Record<"high" | "medium" | "low", string> = {
@@ -31,21 +40,49 @@ const BUCKET_LABEL: Record<"high" | "medium" | "low", string> = {
   low: "Low confidence",
 };
 
+const PROPOSAL_STYLE: Record<RoutineStepView["proposal"], string> = {
+  KEEP: "bg-chip text-ink-2",
+  ADD: "bg-ok/10 text-ok",
+  REMOVE: "bg-danger/10 text-danger",
+  CHANGE: "bg-warn/10 text-warn",
+};
+
+const PROPOSAL_LABEL: Record<RoutineStepView["proposal"], string> = {
+  KEEP: "Keep",
+  ADD: "Suggested addition",
+  REMOVE: "Suggested removal",
+  CHANGE: "Suggested change",
+};
+
+const BUDGET_LABEL: Record<RoutineStepView["budgetAdjustment"], string> = {
+  NONE: "",
+  FREQUENCY_REDUCED: "Frequency reduced for budget",
+  DROPPED_FOR_BUDGET: "Dropped for budget",
+};
+
 function needsDecision(step: RoutineStepView): boolean {
   const isLow = !step.confidence || step.confidence.bucket === "low";
   return isLow && step.ackLowConfidence == null;
+}
+
+function freqLabel(n: number): string {
+  return n >= 7 ? "Daily" : `${n}x/week`;
 }
 
 export function RoutineReview({
   routineId,
   status,
   rationale,
+  overviewSourceLinks,
   steps: initialSteps,
+  proTips,
 }: {
   routineId: string;
   status: string;
   rationale: string;
+  overviewSourceLinks: { label: string; url: string }[];
   steps: RoutineStepView[];
+  proTips: ProTipView[];
 }) {
   const router = useRouter();
   const [steps, setSteps] = useState(initialSteps);
@@ -54,6 +91,57 @@ export function RoutineReview({
   const [error, setError] = useState<string | null>(null);
 
   const pendingDecisions = useMemo(() => steps.filter(needsDecision), [steps]);
+
+  // Mirrors the server's resolution logic in api/routine/[id]/protips/[tipId]/respond
+  // so the routine card updates immediately instead of waiting on a reload.
+  function handleTipResolved(tip: ProTipView, status: "ACCEPTED" | "REJECTED") {
+    setSteps((prev) =>
+      prev.flatMap((s) => {
+        if (s.id !== tip.stepId) return [s];
+        if (status === "ACCEPTED") {
+          switch (tip.actionType) {
+            case "ADD":
+              return [{ ...s, proposal: "KEEP" as const }];
+            case "REMOVE":
+              return [];
+            case "CHANGE":
+              if (s.alternativeProduct) {
+                return [
+                  {
+                    ...s,
+                    product: { ...s.alternativeProduct, step: s.product.step },
+                    ownership: "NEW" as const,
+                    frequencyPerWeek: s.alternativeFrequency ?? s.frequencyPerWeek,
+                    proposal: "KEEP" as const,
+                    alternativeProduct: null,
+                    alternativeFrequency: null,
+                  },
+                ];
+              }
+              if (s.alternativeFrequency) {
+                return [
+                  { ...s, frequencyPerWeek: s.alternativeFrequency, proposal: "KEEP" as const, alternativeFrequency: null },
+                ];
+              }
+              return [{ ...s, proposal: "KEEP" as const }];
+            case "KEEP":
+              return [s];
+          }
+        } else {
+          switch (tip.actionType) {
+            case "ADD":
+              return [];
+            case "REMOVE":
+            case "CHANGE":
+              return [{ ...s, proposal: "KEEP" as const, alternativeProduct: null, alternativeFrequency: null }];
+            case "KEEP":
+              return [s];
+          }
+        }
+      })
+    );
+    router.refresh();
+  }
 
   async function patchStep(stepId: string, body: Record<string, unknown>) {
     setBusyStepId(stepId);
@@ -72,9 +160,7 @@ export function RoutineReview({
       if (data.removed || body.action === "remove") {
         setSteps((prev) => prev.filter((s) => s.id !== stepId));
       } else {
-        setSteps((prev) =>
-          prev.map((s) => (s.id === stepId ? { ...s, ackLowConfidence: true } : s))
-        );
+        setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...s, ackLowConfidence: true } : s)));
       }
       router.refresh();
     } catch {
@@ -119,11 +205,38 @@ export function RoutineReview({
 
       <main className="flex-1 px-6 sm:px-10 py-12">
         <div className="max-w-2xl mx-auto">
+          {/* Part 1 — brief overview */}
           <h1 className="text-[22px] font-bold text-ink">Your routine</h1>
-          <p className="mt-2 text-[14px] text-ink-2 leading-relaxed whitespace-pre-line">
-            {rationale}
-          </p>
+          <p className="mt-2 text-[14px] text-ink-2 leading-relaxed whitespace-pre-line">{rationale}</p>
+          {overviewSourceLinks.length > 0 && (
+            <p className="mt-2 text-[12px] text-ink-3">
+              Sources:{" "}
+              {overviewSourceLinks.map((s, i) => (
+                <span key={s.url}>
+                  <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                    {s.label}
+                  </a>
+                  {i < overviewSourceLinks.length - 1 ? ", " : ""}
+                </span>
+              ))}
+            </p>
+          )}
 
+          {/* Part 2 — Pro Tips */}
+          {proTips.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">Pro Tips</h2>
+              <p className="mt-1 text-[12px] text-ink-3">
+                Accept or reject each one — the routine below updates as you go. You can finalize the
+                routine anytime without responding to all of them.
+              </p>
+              <div className="mt-3">
+                <ProTipsList tips={proTips} onTipResolved={handleTipResolved} />
+              </div>
+            </div>
+          )}
+
+          {/* Part 3 — the routine card */}
           {steps.length === 0 ? (
             <p className="mt-8 text-[14px] text-ink-3">
               No steps yet — add products in your intake and rebuild.
@@ -138,23 +251,70 @@ export function RoutineReview({
               ).map(([label, group]) =>
                 group.length === 0 ? null : (
                   <section key={label}>
-                    <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">
-                      {label}
-                    </h2>
+                    <h2 className="text-[12px] font-bold tracking-[0.08em] uppercase text-ink-3">{label}</h2>
                     <div className="mt-3 flex flex-col gap-3">
                       {group.map((step) => (
-                        <div
-                          key={step.id}
-                          className="bg-bg-raise border border-line rounded-[10px] p-4"
-                        >
+                        <div key={step.id} className="bg-bg-raise border border-line rounded-[10px] p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="text-[14px] font-bold text-ink">
                                 {step.order}. {step.product.brand} — {step.product.name}
                               </div>
-                              <p className="mt-1 text-[13px] text-ink-2 leading-relaxed">
-                                {step.rationale}
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-chip text-ink-2">
+                                  {CATEGORY_LABEL[step.product.step] ?? step.product.step}
+                                </span>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-chip text-ink-2">
+                                  {freqLabel(step.frequencyPerWeek)}
+                                </span>
+                                {step.timeCostMinutes != null && (
+                                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-chip text-ink-2">
+                                    ~{step.timeCostMinutes} min
+                                  </span>
+                                )}
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-chip text-ink-2">
+                                  {step.ownership === "OWNED" ? "Owned" : "New suggestion"}
+                                </span>
+                                <span
+                                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${PROPOSAL_STYLE[step.proposal]}`}
+                                >
+                                  {PROPOSAL_LABEL[step.proposal]}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-[13px] text-ink-2 leading-relaxed">{step.rationale}</p>
+
+                              {step.proposal === "CHANGE" && (step.alternativeProduct || step.alternativeFrequency) && (
+                                <p className="mt-1.5 text-[12px] text-warn">
+                                  Suggested:{" "}
+                                  {step.alternativeProduct
+                                    ? `${step.alternativeProduct.brand} — ${step.alternativeProduct.name}`
+                                    : null}
+                                  {step.alternativeProduct && step.alternativeFrequency ? ", " : ""}
+                                  {step.alternativeFrequency ? freqLabel(step.alternativeFrequency) : null}
+                                </p>
+                              )}
+
+                              <p className="mt-1.5 text-[11px] text-ink-3">
+                                Rule cited: {step.ruleLabel ? (
+                                  <a
+                                    href={step.ruleUrl ?? undefined}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-accent hover:underline"
+                                  >
+                                    {step.ruleLabel}
+                                  </a>
+                                ) : (
+                                  "none"
+                                )}
                               </p>
+
+                              {step.budgetAdjustment !== "NONE" && (
+                                <p className="mt-1 text-[11px] text-ink-3">
+                                  {BUDGET_LABEL[step.budgetAdjustment]}
+                                  {step.budgetAdjustmentReason ? ` — ${step.budgetAdjustmentReason}` : ""}
+                                </p>
+                              )}
                             </div>
                             {status === "DRAFT" && (
                               <button
@@ -179,17 +339,14 @@ export function RoutineReview({
                           {status === "DRAFT" && needsDecision(step) && (
                             <div className="mt-3 border border-warn/40 bg-warn/10 rounded-[6px] px-3 py-2.5">
                               <p className="text-[13px] text-ink">
-                                We&rsquo;re not confident about this product&rsquo;s
-                                ingredients yet. Include it in your routine anyway, or
-                                leave it out? Your call either way.
+                                We&rsquo;re not confident about this product&rsquo;s ingredients yet.
+                                Include it in your routine anyway, or leave it out? Your call either way.
                               </p>
                               <div className="mt-2 flex gap-2">
                                 <button
                                   type="button"
                                   disabled={busyStepId === step.id}
-                                  onClick={() =>
-                                    patchStep(step.id, { action: "acknowledge", include: true })
-                                  }
+                                  onClick={() => patchStep(step.id, { action: "acknowledge", include: true })}
                                   className="text-[12px] font-semibold bg-accent text-accent-ink px-3 py-1.5 rounded-[6px] disabled:opacity-50"
                                 >
                                   Include anyway
@@ -197,9 +354,7 @@ export function RoutineReview({
                                 <button
                                   type="button"
                                   disabled={busyStepId === step.id}
-                                  onClick={() =>
-                                    patchStep(step.id, { action: "acknowledge", include: false })
-                                  }
+                                  onClick={() => patchStep(step.id, { action: "acknowledge", include: false })}
                                   className="text-[12px] font-semibold text-ink-2 hover:text-ink px-3 py-1.5 rounded-[6px] border border-line disabled:opacity-50"
                                 >
                                   Leave out
@@ -234,8 +389,8 @@ export function RoutineReview({
               </button>
               {pendingDecisions.length > 0 && (
                 <span className="text-[13px] text-ink-3">
-                  Resolve {pendingDecisions.length} flagged{" "}
-                  {pendingDecisions.length === 1 ? "product" : "products"} first.
+                  Resolve {pendingDecisions.length} flagged {pendingDecisions.length === 1 ? "product" : "products"}{" "}
+                  first.
                 </span>
               )}
             </div>

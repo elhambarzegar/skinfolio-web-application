@@ -6,6 +6,54 @@
  * full citations. This is a reference document, not medical advice.
  */
 
+/**
+ * Real source links for INGREDIENT_RULES, keyed by rule number. The agent
+ * only ever cites a rule number — the app resolves it to this link, so a
+ * "source" shown to the user is never something the model generated.
+ */
+export const RULE_SOURCES: Record<number, { label: string; url: string }> = {
+  1: {
+    label: "AAD — Should I apply my skin care products in a certain order?",
+    url: "https://www.aad.org/public/everyday-care/skin-care-basics/care/apply-skin-care-certain-order",
+  },
+  2: {
+    label: "AAD — Retinoid or retinol?",
+    url: "https://www.aad.org/public/everyday-care/skin-care-secrets/anti-aging/retinoid-retinol",
+  },
+  3: {
+    label: "AAD — Retinoid or retinol?",
+    url: "https://www.aad.org/public/everyday-care/skin-care-secrets/anti-aging/retinoid-retinol",
+  },
+  4: {
+    label: "FDA — Alpha Hydroxy Acids",
+    url: "https://www.fda.gov/cosmetics/cosmetic-ingredients/alpha-hydroxy-acids",
+  },
+  5: {
+    label: "FDA — Alpha Hydroxy Acids",
+    url: "https://www.fda.gov/cosmetics/cosmetic-ingredients/alpha-hydroxy-acids",
+  },
+  6: {
+    label: "MotherToBaby — Topical Acne Treatments and Pregnancy",
+    url: "https://mothertobaby.org/fact-sheets/topical-acne-treatments-pregnancy/",
+  },
+  7: {
+    label: "FDA — Skin Product Safety",
+    url: "https://www.fda.gov/consumers/skin-facts-what-you-need-know-about-skin-lightening-products/skin-product-safety",
+  },
+  8: {
+    label: "FDA — Allergens in Cosmetics",
+    url: "https://www.fda.gov/cosmetics/cosmetic-ingredients/allergens-cosmetics",
+  },
+  9: {
+    label: "AAD — Should I apply my skin care products in a certain order?",
+    url: "https://www.aad.org/public/everyday-care/skin-care-basics/care/apply-skin-care-certain-order",
+  },
+  10: {
+    label: "Journal of Skin and Stem Cell — Topical Vitamin C and Its Derivatives",
+    url: "https://brieflands.com/journals/jssc/articles/163798",
+  },
+};
+
 export const INGREDIENT_RULES = `
 Rule 1 — Sunscreen goes last in a daytime routine. Sunscreen (SPF) should be the final product applied in a morning routine — after treatments and moisturizer, before makeup. (AAD)
 

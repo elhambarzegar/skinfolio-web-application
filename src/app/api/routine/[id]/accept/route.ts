@@ -12,7 +12,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const routine = await prisma.routine.findUnique({
     where: { id },
-    include: { steps: { include: { product: { include: { currentSource: true } } } } },
+    include: {
+      steps: { where: { active: true }, include: { product: { include: { currentSource: true } } } },
+    },
   });
 
   if (!routine || routine.userId !== session.user.id) {
@@ -20,6 +22,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   const unresolved = routine.steps.filter((step) => {
+    // A still-pending ADD suggestion isn't committed content yet — its
+    // Pro Tip is what needs a decision, not a low-confidence acknowledgment.
+    if (step.proposal === "ADD") return false;
     const source = step.product.currentSource;
     const isLowConfidence = !source || confidenceBucket(source.confidenceScore) === "low";
     return isLowConfidence && step.ackLowConfidence == null;

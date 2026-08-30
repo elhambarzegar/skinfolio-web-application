@@ -38,14 +38,14 @@ export async function PATCH(
   const action = body?.action;
 
   if (action === "remove") {
-    await prisma.routineStep.delete({ where: { id: step.id } });
+    await prisma.routineStep.update({ where: { id: step.id }, data: { active: false } });
     return NextResponse.json({ ok: true });
   }
 
   if (action === "acknowledge") {
     const include = body?.include === true;
     if (!include) {
-      await prisma.routineStep.delete({ where: { id: step.id } });
+      await prisma.routineStep.update({ where: { id: step.id }, data: { active: false } });
       return NextResponse.json({ ok: true, removed: true });
     }
     await prisma.routineStep.update({

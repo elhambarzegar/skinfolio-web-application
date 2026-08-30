@@ -86,6 +86,7 @@ model Product {
 
   intakeAppearances IntakeResponse[] @relation("IntakeOwnedProducts")
   routineSteps      RoutineStep[]
+  alternativeForSteps RoutineStep[] @relation("AlternativeProduct")
 }
 
 enum SourceOrigin {
@@ -142,15 +143,20 @@ enum RoutineStatus {
 }
 
 model Routine {
-  id        String        @id @default(cuid())
-  userId    String
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status    RoutineStatus @default(DRAFT)
-  rationale String
-  createdAt DateTime      @default(now())
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         RoutineStatus @default(DRAFT)
+  rationale      String
+  // Rule numbers (see lib/routine/policy.ts RULE_SOURCES) cited by the
+  // overview, resolved to real source links at render time — never an
+  // LLM-generated URL.
+  overviewSources Int[]
+  createdAt      DateTime      @default(now())
 
   steps    RoutineStep[]
   checkIns CheckIn[]
+  proTips  ProTip[]
 }
 
 enum TimeOfDay {
@@ -158,17 +164,86 @@ enum TimeOfDay {
   PM
 }
 
+enum StepProposal {
+  KEEP
+  REMOVE
+  ADD
+  CHANGE
+}
+
+enum ProductOwnership {
+  OWNED
+  NEW
+}
+
+enum BudgetAdjustment {
+  NONE
+  FREQUENCY_REDUCED
+  DROPPED_FOR_BUDGET
+}
+
 model RoutineStep {
-  id                 String    @id @default(cuid())
-  routineId          String
-  routine            Routine   @relation(fields: [routineId], references: [id], onDelete: Cascade)
-  productId           String
-  product             Product   @relation(fields: [productId], references: [id])
-  timeOfDay           TimeOfDay
-  order               Int
-  rationale           String
-  ackLowConfidence    Boolean?
-  decidedAt           DateTime?
+  id                String    @id @default(cuid())
+  routineId         String
+  routine           Routine   @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id])
+  timeOfDay         TimeOfDay
+  order             Int
+  rationale         String
+  ackLowConfidence  Boolean?
+  decidedAt         DateTime?
+  // Soft-delete: a step is never hard-deleted once a ProTip can reference
+  // it, so accept/reject history (and the step's own audit trail) survives
+  // a "remove"/discarded-"add" resolution. Every routine-steps query
+  // filters to active: true.
+  active            Boolean   @default(true)
+
+  frequencyPerWeek       Int              @default(7)
+  timeCostMinutes        Int?
+  ownership              ProductOwnership @default(OWNED)
+  proposal               StepProposal     @default(KEEP)
+  proposalReason         String?
+  // Rule number cited (see RULE_SOURCES), or null for "none".
+  ruleCitation           Int?
+  alternativeProductId   String?
+  alternativeProduct     Product?         @relation("AlternativeProduct", fields: [alternativeProductId], references: [id])
+  alternativeFrequency   Int?
+  budgetAdjustment       BudgetAdjustment @default(NONE)
+  budgetAdjustmentReason String?
+
+  proTips ProTip[]
+}
+
+enum ProTipAction {
+  ADD
+  REMOVE
+  CHANGE
+  KEEP
+}
+
+enum ProTipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// One proposed change to the routine, surfaced as a one-sentence card with
+// accept/reject. ADD/REMOVE/CHANGE tips stay visible (dashboard + routine
+// page) until responded to; KEEP tips are low-stakes affirmations that
+// don't need to nag.
+model ProTip {
+  id            String       @id @default(cuid())
+  routineId     String
+  routine       Routine      @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  summary       String
+  actionType    ProTipAction
+  ruleCitation  Int?
+  primaryStepId String
+  primaryStep   RoutineStep  @relation(fields: [primaryStepId], references: [id])
+  status        ProTipStatus @default(PENDING)
+  respondedAt   DateTime?
+  createdAt     DateTime     @default(now())
 }
 
 // --- Check-ins & escalation --------------------------------------------------
