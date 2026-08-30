@@ -212,7 +212,10 @@ export function RoutineReview({
             <p className="mt-2 text-[12px] text-ink-3">
               Sources:{" "}
               {overviewSourceLinks.map((s, i) => (
-                <span key={s.url}>
+                // Index key: order is stable, and two different rules can
+                // legitimately cite the same URL (e.g. rules 2 and 3 both
+                // source the AAD retinoid page), so the url isn't unique.
+                <span key={i}>
                   <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
                     {s.label}
                   </a>
