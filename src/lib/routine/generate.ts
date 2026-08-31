@@ -28,7 +28,7 @@ const StepOutput = z.object({
 
 const ProTipOutput = z.object({
   summary: z.string(),
-  actionType: z.enum(["ADD", "REMOVE", "CHANGE", "KEEP"]),
+  actionType: z.enum(["ADD", "REMOVE", "CHANGE"]),
   ruleCitation: z.number().int().nullable(),
   stepProductId: z.string(),
   stepTimeOfDay: z.enum(["AM", "PM"]),
@@ -79,7 +79,7 @@ ${INGREDIENT_RULES}
 - timeCostMinutes: a realistic rough estimate per application (typically 1 for cleanser/treatment/moisturizer, 2 for sunscreen).
 - budgetAdjustment: "NONE" unless the person's priority is minimizing spend or buying fewer/better products and you're deliberately reducing frequency ("FREQUENCY_REDUCED", explain in budgetAdjustmentReason) or leaving a step out for cost reasons despite it being useful ("DROPPED_FOR_BUDGET", explain why). Never invent a numeric budget or time cap that wasn't given to you.
 
-"proTips" — one entry for every step whose proposal is ADD, REMOVE, or CHANGE (they must resolve, one tip per such step, matched by stepProductId + stepTimeOfDay to a step above). You may also add a small number of KEEP-type tips to affirm a step that's working well, optionally suggesting a frequency — these are informational, not required to act on. Each "summary" is exactly one plain-language sentence a person can decide on in a few seconds.
+"proTips" — real proposed changes only, nothing else. Exactly one entry for every step whose proposal is ADD, REMOVE, or CHANGE, matched by stepProductId + stepTimeOfDay to a step above — never more than one tip per step, and never give a step conflicting signals (e.g. don't describe the same step as both worth removing and worth changing). Do NOT create a tip for a step whose proposal is KEEP — an unchanged step doesn't need a decision, so it gets no tip at all. Each "summary" is exactly one plain-language sentence a person can decide on in a few seconds.
 
 ## Candidates for ADD / CHANGE suggestions
 
@@ -252,8 +252,34 @@ ${candidateRows.length > 0 ? candidateRows.map(formatRow).join("\n") : "(none av
     });
 
   const stepKey = (productId: string, timeOfDay: string) => `${productId}::${timeOfDay}`;
-  const validStepKeys = new Set(validSteps.map((s) => stepKey(s.productId, s.timeOfDay)));
-  const validProTips = parsed.proTips.filter((t) => validStepKeys.has(stepKey(t.stepProductId, t.stepTimeOfDay)));
+  const stepByKey = new Map(validSteps.map((s) => [stepKey(s.productId, s.timeOfDay), s]));
+
+  // Defensive dedup/merge: at most one Pro Tip per step, and it always
+  // agrees with that step's own resolved proposal — never two cards for
+  // one step, never a tip contradicting the step it's about.
+  const tipsByStep = new Map<string, typeof parsed.proTips>();
+  for (const tip of parsed.proTips) {
+    const key = stepKey(tip.stepProductId, tip.stepTimeOfDay);
+    const step = stepByKey.get(key);
+    if (!step || step.proposal === "KEEP") continue;
+    const list = tipsByStep.get(key) ?? [];
+    list.push(tip);
+    tipsByStep.set(key, list);
+  }
+
+  const validProTips = Array.from(tipsByStep.keys()).map((key) => {
+    const step = stepByKey.get(key)!;
+    const tips = tipsByStep.get(key)!;
+    const agreeing = tips.filter((t) => t.actionType === step.proposal);
+    const survivors = agreeing.length > 0 ? agreeing : [tips[0]];
+    return {
+      summary: survivors.map((t) => t.summary).join(" "),
+      actionType: step.proposal as "ADD" | "REMOVE" | "CHANGE",
+      ruleCitation: survivors.find((t) => t.ruleCitation !== null)?.ruleCitation ?? null,
+      stepProductId: step.productId,
+      stepTimeOfDay: step.timeOfDay,
+    };
+  });
 
   const overviewRuleCitations = parsed.overviewRuleCitations.map(validRule).filter((n): n is number => n !== null);
 

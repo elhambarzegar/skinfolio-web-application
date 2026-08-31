@@ -68,18 +68,22 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
     };
   });
 
-  const proTips: ProTipView[] = routine.proTips.map((tip) => {
-    const rule = resolveRule(tip.ruleCitation);
-    return {
-      id: tip.id,
-      routineId: routine.id,
-      stepId: tip.primaryStepId,
-      summary: tip.summary,
-      actionType: tip.actionType,
-      status: tip.status,
-      ruleLabel: rule?.label ?? null,
-      ruleUrl: rule?.url ?? null,
-    };
+  // "KEEP" tips predate this rule (Pro Tips now only ever propose a real
+  // change) — filter any leftover ones out rather than surface them here.
+  const proTips: ProTipView[] = routine.proTips
+    .filter((tip) => tip.actionType !== "KEEP")
+    .map((tip) => {
+      const rule = resolveRule(tip.ruleCitation);
+      return {
+        id: tip.id,
+        routineId: routine.id,
+        stepId: tip.primaryStepId,
+        summary: tip.summary,
+        actionType: tip.actionType,
+        status: tip.status,
+        ruleLabel: rule?.label ?? null,
+        ruleUrl: rule?.url ?? null,
+      };
   });
 
   const overviewSourceLinks = routine.overviewSources
