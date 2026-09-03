@@ -8,6 +8,7 @@ import { RULE_SOURCES } from "@/lib/routine/policy";
 import { SignOutButton } from "./sign-out-button";
 import { BuildRoutineButton } from "./build-routine-button";
 import { OwnedProductsList } from "./owned-products-list";
+import { AddProductButton } from "./add-product-button";
 import { ProTipsList } from "@/components/pro-tips-list";
 
 
@@ -148,6 +149,7 @@ export default async function DashboardPage() {
                     <Link href="/checkin" className="text-[13px] font-semibold text-accent">
                       Log another check-in
                     </Link>
+                    <AddProductButton />
                   </div>
                 </div>
               ) : currentRoutine ? (
@@ -172,6 +174,7 @@ export default async function DashboardPage() {
                     >
                       View routine
                     </Link>
+                    <AddProductButton />
                   </div>
                 </div>
               ) : null}

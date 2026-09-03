@@ -11,7 +11,7 @@ import {
   type Priority,
   type ComplexityPreference,
 } from "@/lib/intakeProfile";
-import { ProductSearchRow, type OwnedProductEntry } from "./product-search-row";
+import { ProductSearchRow, type OwnedProductEntry } from "@/components/product-search-row";
 
 const TOTAL_STEPS = 8;
 

@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveProductSource } from "@/lib/productLookup";
+import { resolveOwnedProducts, type OwnedProductInput } from "@/lib/productLookup/resolveOwnedProducts";
 import { EXPERIENCE_OPTIONS, PRIORITY_OPTIONS, COMPLEXITY_OPTIONS } from "@/lib/intakeProfile";
-
-type OwnedProductInput = { brand: string; name: string; productId: string | null };
 
 const EXPERIENCE_LEVELS = EXPERIENCE_OPTIONS.map((o) => o.value);
 const PRIORITIES = PRIORITY_OPTIONS.map((o) => o.value);
@@ -61,37 +60,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "You need to acknowledge the safety agreement to continue." }, { status: 400 });
   }
 
-  const newProductIds: string[] = [];
+  let newProductIds: string[] = [];
 
   const intake = await prisma.$transaction(async (tx) => {
-    const productIds: string[] = [];
-
-    for (const { brand, name, productId } of ownedProducts) {
-      // A productId means the user picked this from search results — trust
-      // it (after confirming it's real) rather than re-matching by string.
-      const matchedById = productId ? await tx.product.findUnique({ where: { id: productId } }) : null;
-
-      if (matchedById) {
-        productIds.push(matchedById.id);
-        continue;
-      }
-
-      const existing = await tx.product.findFirst({
-        where: {
-          brand: { equals: brand, mode: "insensitive" },
-          name: { equals: name, mode: "insensitive" },
-        },
-      });
-
-      const product =
-        existing ??
-        (await tx.product.create({
-          data: { brand, name, step: "OTHER" },
-        }));
-
-      if (!existing) newProductIds.push(product.id);
-      productIds.push(product.id);
-    }
+    const resolved = await resolveOwnedProducts(tx, ownedProducts);
+    const productIds = resolved.productIds;
+    newProductIds = resolved.newProductIds;
 
     return tx.intakeResponse.create({
       data: {
