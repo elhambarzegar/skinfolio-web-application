@@ -1,10 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProductSearchRow, type OwnedProductEntry } from "@/components/product-search-row";
 
 type Row = OwnedProductEntry & { rowId: number };
+
+// A brand-new product can go through a real web-search lookup before we
+// even get to comparing it (up to ~2 minutes in the slow case) — without
+// visible progress that reads as stuck, not slow.
+const ANALYZE_STEPS = [
+  "Looking up product details",
+  "Checking ingredients",
+  "Comparing with your routine",
+  "Checking for conflicts",
+];
+const ANALYZE_STEP_INTERVAL_MS = 4000;
 
 type CompatibilityResult = {
   productId: string;
@@ -37,6 +48,14 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
   const [integrating, setIntegrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CompatibilityResult[]>([]);
+  const [revealedCount, setRevealedCount] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   function updateRow(rowId: number, entry: OwnedProductEntry) {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...entry, rowId } : r)));
@@ -59,6 +78,11 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
     }
 
     setAnalyzing(true);
+    setRevealedCount(1);
+    intervalRef.current = setInterval(() => {
+      setRevealedCount((c) => Math.min(c + 1, ANALYZE_STEPS.length));
+    }, ANALYZE_STEP_INTERVAL_MS);
+
     try {
       const res = await fetch("/api/routine/add-product/analyze", {
         method: "POST",
@@ -68,6 +92,7 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
         }),
       });
       const data = await res.json();
+      if (intervalRef.current) clearInterval(intervalRef.current);
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
         setAnalyzing(false);
@@ -77,6 +102,7 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
       setPhase("results");
       setAnalyzing(false);
     } catch {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setError("Couldn't reach the server. Check your connection and try again.");
       setAnalyzing(false);
     }
@@ -156,14 +182,27 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              className="mt-5 w-full text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90 disabled:opacity-50"
-            >
-              {analyzing ? "Checking fit…" : "Check fit"}
-            </button>
+            {analyzing ? (
+              <div className="mt-5 flex flex-col gap-1.5">
+                {ANALYZE_STEPS.slice(0, revealedCount).map((step) => (
+                  <div key={step} className="text-[13px] flex items-center gap-2 text-ink-2">
+                    <span className="text-ok">✓</span>
+                    {step}…
+                  </div>
+                ))}
+                <p className="mt-1 text-[12px] text-ink-3">
+                  A brand-new product can take a couple of minutes the first time — we&rsquo;re looking it up for real.
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAnalyze}
+                className="mt-5 w-full text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90"
+              >
+                Check fit
+              </button>
+            )}
           </>
         )}
 
