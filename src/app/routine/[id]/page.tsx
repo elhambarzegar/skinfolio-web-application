@@ -24,13 +24,13 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
     include: {
       steps: {
         where: { active: true },
-        include: {
-          product: { include: { currentSource: true } },
-          alternativeProduct: true,
-        },
+        include: { product: { include: { currentSource: true } } },
         orderBy: [{ timeOfDay: "asc" }, { order: "asc" }],
       },
-      proTips: { orderBy: { createdAt: "asc" } },
+      proTips: {
+        orderBy: { createdAt: "asc" },
+        include: { primaryStep: { select: { suggestedDescription: true } } },
+      },
     },
   });
 
@@ -39,7 +39,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
   }
 
   const steps: RoutineStepView[] = routine.steps.map((step) => {
-    const source = step.product.currentSource;
+    const source = step.product?.currentSource ?? null;
     const bucket = source ? confidenceBucket(source.confidenceScore) : null;
     const rule = resolveRule(step.ruleCitation);
     return {
@@ -48,7 +48,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
       order: step.order,
       rationale: step.rationale,
       ackLowConfidence: step.ackLowConfidence,
-      product: { id: step.product.id, brand: step.product.brand, name: step.product.name, step: step.product.step },
+      product: step.product ? { id: step.product.id, brand: step.product.brand, name: step.product.name, step: step.product.step } : null,
       confidence: bucket
         ? { bucket, score: source!.confidenceScore, origin: source!.origin, fetchedAt: source!.fetchedAt.toISOString() }
         : null,
@@ -59,9 +59,8 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
       proposalReason: step.proposalReason,
       ruleLabel: rule?.label ?? null,
       ruleUrl: rule?.url ?? null,
-      alternativeProduct: step.alternativeProduct
-        ? { id: step.alternativeProduct.id, brand: step.alternativeProduct.brand, name: step.alternativeProduct.name }
-        : null,
+      suggestedCategory: step.suggestedCategory,
+      suggestedDescription: step.suggestedDescription,
       alternativeFrequency: step.alternativeFrequency,
       budgetAdjustment: step.budgetAdjustment,
       budgetAdjustmentReason: step.budgetAdjustmentReason,
@@ -83,8 +82,9 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
         status: tip.status,
         ruleLabel: rule?.label ?? null,
         ruleUrl: rule?.url ?? null,
+        shopQuery: tip.primaryStep.suggestedDescription,
       };
-  });
+    });
 
   const overviewSourceLinks = routine.overviewSources
     .map((n) => resolveRule(n))

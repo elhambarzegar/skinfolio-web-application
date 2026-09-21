@@ -39,6 +39,7 @@ export default async function DashboardPage() {
   const pendingTips = currentRoutine
     ? currentRoutine.proTips.map((tip) => {
         const rule = tip.ruleCitation !== null ? RULE_SOURCES[tip.ruleCitation] : null;
+        const step = currentRoutine.steps.find((s) => s.id === tip.primaryStepId);
         return {
           id: tip.id,
           routineId: currentRoutine.id,
@@ -48,6 +49,7 @@ export default async function DashboardPage() {
           status: tip.status,
           ruleLabel: rule ? `Rule ${tip.ruleCitation} — ${rule.label}` : null,
           ruleUrl: rule?.url ?? null,
+          shopQuery: step?.suggestedDescription ?? null,
         };
       })
     : [];

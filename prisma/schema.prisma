@@ -86,7 +86,6 @@ model Product {
 
   intakeAppearances IntakeResponse[] @relation("IntakeOwnedProducts")
   routineSteps      RoutineStep[]
-  alternativeForSteps RoutineStep[] @relation("AlternativeProduct")
 }
 
 enum SourceOrigin {
@@ -186,8 +185,10 @@ model RoutineStep {
   id                String    @id @default(cuid())
   routineId         String
   routine           Routine   @relation(fields: [routineId], references: [id], onDelete: Cascade)
-  productId         String
-  product           Product   @relation(fields: [productId], references: [id])
+  // Null only for a proposal: "ADD" step — a described gap with nothing
+  // owned yet. Every other proposal always has a real owned product.
+  productId         String?
+  product           Product?  @relation(fields: [productId], references: [id])
   timeOfDay         TimeOfDay
   order             Int
   rationale         String
@@ -206,8 +207,13 @@ model RoutineStep {
   proposalReason         String?
   // Rule number cited (see RULE_SOURCES), or null for "none".
   ruleCitation           Int?
-  alternativeProductId   String?
-  alternativeProduct     Product?         @relation("AlternativeProduct", fields: [alternativeProductId], references: [id])
+  // Generic, brand-agnostic description of what would fill this slot
+  // better — set for "ADD" (paired with suggestedCategory) and for a
+  // "CHANGE" that isn't just a frequency tweak. The app never names a
+  // specific product here; it renders shop-search links from this text
+  // instead (see lib/shopLinks.ts).
+  suggestedCategory      ProductStep?
+  suggestedDescription   String?
   alternativeFrequency   Int?
   budgetAdjustment       BudgetAdjustment @default(NONE)
   budgetAdjustmentReason String?

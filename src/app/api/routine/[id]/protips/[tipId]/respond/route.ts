@@ -5,69 +5,41 @@ import type { Prisma } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
 
-async function applyResolution(
-  tx: Tx,
-  tip: { actionType: string; primaryStepId: string },
-  decision: "accept" | "reject",
-  userId: string
-) {
+/**
+ * The app never names a specific replacement/addition — every ADD and
+ * CHANGE tip is a description plus shop-search links. So there's nothing
+ * concrete to "apply" on accept: the resolution here just settles the
+ * step's pending state either way. If the person actually buys something,
+ * they add it for real via the separate add-product flow.
+ */
+async function applyResolution(tx: Tx, tip: { actionType: string; primaryStepId: string }, decision: "accept" | "reject") {
   const step = await tx.routineStep.findUnique({ where: { id: tip.primaryStepId } });
   if (!step) return;
 
-  if (decision === "accept") {
-    switch (tip.actionType) {
-      case "ADD":
+  switch (tip.actionType) {
+    case "ADD":
+      // Nothing to keep without a real product either way.
+      await tx.routineStep.update({ where: { id: step.id }, data: { active: false } });
+      break;
+    case "REMOVE":
+      if (decision === "accept") {
+        await tx.routineStep.update({ where: { id: step.id }, data: { active: false } });
+      } else {
         await tx.routineStep.update({ where: { id: step.id }, data: { proposal: "KEEP" } });
-        break;
-      case "REMOVE":
-        await tx.routineStep.update({ where: { id: step.id }, data: { active: false } });
-        break;
-      case "CHANGE": {
-        if (step.alternativeProductId) {
-          const intake = await tx.intakeResponse.findFirst({
-            where: { userId },
-            orderBy: { createdAt: "desc" },
-            include: { ownedProducts: { select: { id: true } } },
-          });
-          const isOwned = intake?.ownedProducts.some((p) => p.id === step.alternativeProductId) ?? false;
-          await tx.routineStep.update({
-            where: { id: step.id },
-            data: {
-              productId: step.alternativeProductId,
-              ownership: isOwned ? "OWNED" : "NEW",
-              frequencyPerWeek: step.alternativeFrequency ?? step.frequencyPerWeek,
-              proposal: "KEEP",
-              alternativeProductId: null,
-              alternativeFrequency: null,
-            },
-          });
-        } else if (step.alternativeFrequency) {
-          await tx.routineStep.update({
-            where: { id: step.id },
-            data: { frequencyPerWeek: step.alternativeFrequency, proposal: "KEEP", alternativeFrequency: null },
-          });
-        } else {
-          await tx.routineStep.update({ where: { id: step.id }, data: { proposal: "KEEP" } });
-        }
-        break;
       }
-      case "KEEP":
-        break;
-    }
-  } else {
-    switch (tip.actionType) {
-      case "ADD":
-        await tx.routineStep.update({ where: { id: step.id }, data: { active: false } });
-        break;
-      case "REMOVE":
-      case "CHANGE":
-        await tx.routineStep.update({
-          where: { id: step.id },
-          data: { proposal: "KEEP", alternativeProductId: null, alternativeFrequency: null },
-        });
-        break;
-      case "KEEP":
-        break;
+      break;
+    case "CHANGE": {
+      const applyFrequency = decision === "accept" && step.alternativeFrequency;
+      await tx.routineStep.update({
+        where: { id: step.id },
+        data: {
+          proposal: "KEEP",
+          frequencyPerWeek: applyFrequency ? step.alternativeFrequency! : step.frequencyPerWeek,
+          alternativeFrequency: null,
+          suggestedDescription: null,
+        },
+      });
+      break;
     }
   }
 }
@@ -101,7 +73,7 @@ export async function POST(
   }
 
   await prisma.$transaction(async (tx) => {
-    await applyResolution(tx, tip, decision, session.user.id);
+    await applyResolution(tx, tip, decision);
     await tx.proTip.update({
       where: { id: tip.id },
       data: { status: decision === "accept" ? "ACCEPTED" : "REJECTED", respondedAt: new Date() },

@@ -13,7 +13,8 @@ export type RoutineStepView = {
   order: number;
   rationale: string;
   ackLowConfidence: boolean | null;
-  product: { id: string; brand: string; name: string; step: string };
+  // Null only for an "ADD" proposal — a described gap, nothing owned yet.
+  product: { id: string; brand: string; name: string; step: string } | null;
   confidence: { bucket: "high" | "medium" | "low"; score: number; origin: string; fetchedAt: string } | null;
   frequencyPerWeek: number;
   timeCostMinutes: number | null;
@@ -22,7 +23,9 @@ export type RoutineStepView = {
   proposalReason: string | null;
   ruleLabel: string | null;
   ruleUrl: string | null;
-  alternativeProduct: { id: string; brand: string; name: string } | null;
+  // Brand-agnostic — the app never names a specific product to buy.
+  suggestedCategory: string | null;
+  suggestedDescription: string | null;
   alternativeFrequency: number | null;
   budgetAdjustment: "NONE" | "FREQUENCY_REDUCED" | "DROPPED_FOR_BUDGET";
   budgetAdjustmentReason: string | null;
@@ -61,6 +64,9 @@ const BUDGET_LABEL: Record<RoutineStepView["budgetAdjustment"], string> = {
 };
 
 function needsDecision(step: RoutineStepView): boolean {
+  // A described gap ("ADD") has no owned product to have low-confidence
+  // ingredient data about — that ack flow doesn't apply to it.
+  if (!step.product) return false;
   const isLow = !step.confidence || step.confidence.bucket === "low";
   return isLow && step.ackLowConfidence == null;
 }
@@ -94,49 +100,32 @@ export function RoutineReview({
 
   // Mirrors the server's resolution logic in api/routine/[id]/protips/[tipId]/respond
   // so the routine card updates immediately instead of waiting on a reload.
+  // Nothing here ever names a specific product — there's nothing concrete
+  // to swap in, so a CHANGE tip only ever settles frequency, never product.
   function handleTipResolved(tip: ProTipView, status: "ACCEPTED" | "REJECTED") {
     setSteps((prev) =>
       prev.flatMap((s) => {
         if (s.id !== tip.stepId) return [s];
-        if (status === "ACCEPTED") {
-          switch (tip.actionType) {
-            case "ADD":
-              return [{ ...s, proposal: "KEEP" as const }];
-            case "REMOVE":
-              return [];
-            case "CHANGE":
-              if (s.alternativeProduct) {
-                return [
-                  {
-                    ...s,
-                    product: { ...s.alternativeProduct, step: s.product.step },
-                    ownership: "NEW" as const,
-                    frequencyPerWeek: s.alternativeFrequency ?? s.frequencyPerWeek,
-                    proposal: "KEEP" as const,
-                    alternativeProduct: null,
-                    alternativeFrequency: null,
-                  },
-                ];
-              }
-              if (s.alternativeFrequency) {
-                return [
-                  { ...s, frequencyPerWeek: s.alternativeFrequency, proposal: "KEEP" as const, alternativeFrequency: null },
-                ];
-              }
-              return [{ ...s, proposal: "KEEP" as const }];
-            case "KEEP":
-              return [s];
+        switch (tip.actionType) {
+          case "ADD":
+            // Nothing to keep without a real product either way.
+            return [];
+          case "REMOVE":
+            return status === "ACCEPTED" ? [] : [{ ...s, proposal: "KEEP" as const }];
+          case "CHANGE": {
+            const applyFrequency = status === "ACCEPTED" && s.alternativeFrequency;
+            return [
+              {
+                ...s,
+                proposal: "KEEP" as const,
+                frequencyPerWeek: applyFrequency ? s.alternativeFrequency! : s.frequencyPerWeek,
+                alternativeFrequency: null,
+                suggestedDescription: null,
+              },
+            ];
           }
-        } else {
-          switch (tip.actionType) {
-            case "ADD":
-              return [];
-            case "REMOVE":
-            case "CHANGE":
-              return [{ ...s, proposal: "KEEP" as const, alternativeProduct: null, alternativeFrequency: null }];
-            case "KEEP":
-              return [s];
-          }
+          case "KEEP":
+            return [s];
         }
       })
     );
@@ -261,11 +250,16 @@ export function RoutineReview({
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="text-[14px] font-bold text-ink">
-                                {step.order}. {step.product.brand} — {step.product.name}
+                                {step.order}.{" "}
+                                {step.product ? (
+                                  `${step.product.brand} — ${step.product.name}`
+                                ) : (
+                                  <span className="text-ink-2 font-semibold italic">Suggested addition — not yet added</span>
+                                )}
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-chip text-ink-2">
-                                  {CATEGORY_LABEL[step.product.step] ?? step.product.step}
+                                  {CATEGORY_LABEL[step.product?.step ?? step.suggestedCategory ?? ""] ?? step.product?.step ?? step.suggestedCategory}
                                 </span>
                                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-chip text-ink-2">
                                   {freqLabel(step.frequencyPerWeek)}
@@ -286,13 +280,17 @@ export function RoutineReview({
                               </div>
                               <p className="mt-2 text-[13px] text-ink-2 leading-relaxed">{step.rationale}</p>
 
-                              {step.proposal === "CHANGE" && (step.alternativeProduct || step.alternativeFrequency) && (
+                              {step.proposal === "ADD" && step.suggestedDescription && (
+                                <p className="mt-1.5 text-[12px] text-ok">
+                                  Look for: {step.suggestedDescription}
+                                </p>
+                              )}
+
+                              {step.proposal === "CHANGE" && (step.suggestedDescription || step.alternativeFrequency) && (
                                 <p className="mt-1.5 text-[12px] text-warn">
                                   Suggested:{" "}
-                                  {step.alternativeProduct
-                                    ? `${step.alternativeProduct.brand} — ${step.alternativeProduct.name}`
-                                    : null}
-                                  {step.alternativeProduct && step.alternativeFrequency ? ", " : ""}
+                                  {step.suggestedDescription ? `look for ${step.suggestedDescription}` : null}
+                                  {step.suggestedDescription && step.alternativeFrequency ? ", " : ""}
                                   {step.alternativeFrequency ? freqLabel(step.alternativeFrequency) : null}
                                 </p>
                               )}

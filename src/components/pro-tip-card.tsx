@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buildShopLinks } from "@/lib/shopLinks";
 
 export type ProTipView = {
   id: string;
@@ -11,6 +12,10 @@ export type ProTipView = {
   status: "PENDING" | "ACCEPTED" | "REJECTED";
   ruleLabel: string | null;
   ruleUrl: string | null;
+  // Short, brand-agnostic search phrase (e.g. "fragrance-free mineral SPF
+  // 30+ sunscreen") — never a specific product name. Present only for
+  // ADD/CHANGE tips that describe something to shop for.
+  shopQuery: string | null;
 };
 
 const ACTION_LABEL: Record<ProTipView["actionType"], string> = {
@@ -87,6 +92,22 @@ export function ProTipCard({
       )}
 
       {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+
+      {tip.shopQuery && (
+        <div className="mt-2.5 flex gap-2">
+          {Object.entries(buildShopLinks(tip.shopQuery)).map(([site, url]) => (
+            <a
+              key={site}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px] font-semibold text-ink-2 border border-line px-3 py-1.5 rounded-[6px] hover:border-accent hover:text-ink capitalize"
+            >
+              Shop on {site}
+            </a>
+          ))}
+        </div>
+      )}
 
       {localStatus === "PENDING" ? (
         <div className="mt-2.5 flex gap-2">

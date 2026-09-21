@@ -68,9 +68,10 @@ export async function compareProductsToRoutine(userId: string, productIds: strin
   };
 
   const routineBlock = routine.steps
-    .map(
-      (s) =>
-        `- ${s.timeOfDay} ${s.order}. ${s.product.brand} — ${s.product.name} (${s.product.step}, ${s.frequencyPerWeek}x/week): ${ingredientNote(s.product.currentSource)}`
+    .map((s) =>
+      s.product
+        ? `- ${s.timeOfDay} ${s.order}. ${s.product.brand} — ${s.product.name} (${s.product.step}, ${s.frequencyPerWeek}x/week): ${ingredientNote(s.product.currentSource)}`
+        : `- ${s.timeOfDay} ${s.order}. [unfilled gap — suggested: ${s.suggestedDescription ?? "unspecified"}]`
     )
     .join("\n");
 

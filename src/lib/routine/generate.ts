@@ -8,9 +8,12 @@ import { INGREDIENT_RULES, INTAKE_SAFETY_TRIGGERS, RULE_SOURCES } from "./policy
 
 const MODEL = "claude-opus-5";
 const RULE_NUMBERS = Object.keys(RULE_SOURCES).map(Number);
-const CANDIDATES_PER_CATEGORY = 5;
+const CATEGORIES = ["CLEANSE", "TREAT", "MOISTURIZE", "PROTECT"] as const;
 
 const StepOutput = z.object({
+  // A real owned product's id for KEEP/REMOVE/CHANGE. For "ADD", any
+  // short token you choose (e.g. "new-sunscreen") — used only to match
+  // this step to its Pro Tip below, never stored as a real product.
   productId: z.string(),
   timeOfDay: z.enum(["AM", "PM"]),
   order: z.number().int().min(1),
@@ -20,7 +23,8 @@ const StepOutput = z.object({
   ownership: z.enum(["OWNED", "NEW"]),
   proposal: z.enum(["KEEP", "REMOVE", "ADD", "CHANGE"]),
   ruleCitation: z.number().int().nullable(),
-  alternativeProductId: z.string().nullable(),
+  suggestedCategory: z.enum(CATEGORIES).nullable(),
+  suggestedDescription: z.string().nullable(),
   alternativeFrequency: z.number().int().min(1).max(7).nullable(),
   budgetAdjustment: z.enum(["NONE", "FREQUENCY_REDUCED", "DROPPED_FOR_BUDGET"]),
   budgetAdjustmentReason: z.string().nullable(),
@@ -68,22 +72,23 @@ If no red flag applies, build the routine using the ingredient rules policy belo
 INGREDIENT RULES POLICY (numbered 1-10):
 ${INGREDIENT_RULES}
 
+## Never name a specific brand or product to buy
+
+You only ever work with products the person already owns. When something new would help — filling a gap, or replacing something owned with a better fit — describe what to look for in plain, shoppable terms (ingredient/type, and anything that matters like "fragrance-free" or "SPF 30+ mineral"). Never invent or name an actual brand or product — the app turns your description into shopping-site search links so the person picks the specific item themselves. This applies everywhere below.
+
 ## Output shape
 
 "overview" — 2-4 short sentences, plain language, no headers. Cover: whether their owned products are enough to form a real routine or there are real gaps/overlaps, and — grounded only in the actual ingredients present — what the routine is actually doing for their skin long-term (e.g. barrier support, anti-aging via retinoid/peptide, brightening via vitamin C/niacinamide, hydration). Do not repeat step-by-step detail here — that belongs in steps and proTips. "overviewRuleCitations" lists any rule numbers the overview's claims lean on.
 
 "steps" — every step in the routine, AM and PM, ordered Cleanse → Treat → Moisturize → Protect (Protect/sunscreen is AM only and always last; retinoids/actives in Treat are PM only). For EACH step:
-- ownership: "OWNED" if productId is one of their owned products, "NEW" if it's a catalog suggestion they don't own yet.
-- proposal: "KEEP" (this step is settled, no action needed), "REMOVE" (you think this owned product should come out — e.g. redundant with another, or a conflict), "ADD" (a NEW, not-yet-owned product you're suggesting to fill a real gap — use a real product from the candidates list below, never invent one), "CHANGE" (an owned product that would work better swapped for something else, or just at a different frequency — set alternativeProductId and/or alternativeFrequency to the suggestion).
+- productId: the real owned product's id, EXCEPT for a proposal "ADD" step, where there's no owned product yet — invent a short local token instead (e.g. "new-sunscreen"), used only to match this step to its Pro Tip.
+- ownership: "OWNED" for an owned product, "NEW" for an "ADD" step.
+- proposal: "KEEP" (settled, no action needed), "REMOVE" (this owned product should come out — redundant or conflicting with another), "ADD" (a real gap needs filling — set suggestedCategory and suggestedDescription, never a productId that refers to a real catalog item), "CHANGE" (an owned product would work better as a different frequency, and/or swapped for a different kind of product — set alternativeFrequency and/or suggestedDescription; never name what to swap to, describe it).
 - frequencyPerWeek: 7 for daily use. Strong actives (retinoids, exfoliating acids) commonly start lower for someone new to them — use judgment, explain in rationale, and only cite a rule number if the frequency claim is actually one of the 10 rules (most frequency judgment calls aren't — use null).
 - timeCostMinutes: a realistic rough estimate per application (typically 1 for cleanser/treatment/moisturizer, 2 for sunscreen).
 - budgetAdjustment: "NONE" unless the person's priority is minimizing spend or buying fewer/better products and you're deliberately reducing frequency ("FREQUENCY_REDUCED", explain in budgetAdjustmentReason) or leaving a step out for cost reasons despite it being useful ("DROPPED_FOR_BUDGET", explain why). Never invent a numeric budget or time cap that wasn't given to you.
 
-"proTips" — real proposed changes only, nothing else. Exactly one entry for every step whose proposal is ADD, REMOVE, or CHANGE, matched by stepProductId + stepTimeOfDay to a step above — never more than one tip per step, and never give a step conflicting signals (e.g. don't describe the same step as both worth removing and worth changing). Do NOT create a tip for a step whose proposal is KEEP — an unchanged step doesn't need a decision, so it gets no tip at all. Each "summary" is exactly one plain-language sentence a person can decide on in a few seconds.
-
-## Candidates for ADD / CHANGE suggestions
-
-Only ever suggest a NEW (not-owned) product using one of the real catalog candidates provided in the user message below — matched by id. Never invent a product name, brand, or id. If no good candidate exists for a real gap, don't force an ADD — just note the gap in the overview instead.
+"proTips" — real proposed changes only, nothing else. Exactly one entry for every step whose proposal is ADD, REMOVE, or CHANGE, matched by stepProductId + stepTimeOfDay to a step above — never more than one tip per step, and never give a step conflicting signals (e.g. don't describe the same step as both worth removing and worth changing). Do NOT create a tip for a step whose proposal is KEEP — an unchanged step doesn't need a decision, so it gets no tip at all. Each "summary" is exactly one plain-language sentence a person can decide on in a few seconds, describing what to look for, never a brand or product name.
 
 ## Person's stated profile
 
@@ -146,27 +151,6 @@ export async function generateRoutine(userId: string): Promise<RoutineGeneration
 
   const ownedIds = new Set(ownedRows.map((p) => p.id));
 
-  // Real catalog candidates the agent may suggest as ADD/CHANGE targets —
-  // never let the model invent a product. Only reasonably-verified ones.
-  const categories = ["CLEANSE", "TREAT", "MOISTURIZE", "PROTECT"] as const;
-  const candidateRows: OwnedProductRow[] = [];
-  for (const step of categories) {
-    const candidates = await prisma.product.findMany({
-      where: {
-        step,
-        id: { notIn: Array.from(ownedIds) },
-        currentSource: { confidenceScore: { gte: 50 } },
-      },
-      include: { currentSource: true },
-      orderBy: { currentSource: { confidenceScore: "desc" } },
-      take: CANDIDATES_PER_CATEGORY,
-    });
-    for (const c of candidates) {
-      candidateRows.push({ id: c.id, brand: c.brand, name: c.name, step: c.step, ingredientNote: buildIngredientNote(c.currentSource) });
-    }
-  }
-  const candidateIds = new Set(candidateRows.map((p) => p.id));
-
   const profileLines = [
     intake.experienceLevel && `Experience: ${EXPERIENCE_LABEL[intake.experienceLevel]}`,
     intake.priority && `Priority: ${PRIORITY_LABEL[intake.priority]}`,
@@ -185,10 +169,13 @@ export async function generateRoutine(userId: string): Promise<RoutineGeneration
     },
   });
 
+  const describeStep = (s: { product: { brand: string; name: string } | null; suggestedDescription: string | null; rationale: string }) =>
+    s.product ? `${s.product.brand} — ${s.product.name}: ${s.rationale}` : `[suggested: ${s.suggestedDescription ?? "unspecified"}]: ${s.rationale}`;
+
   const previousRoutineBlock =
     previousRoutine && previousRoutine.steps.length > 0
       ? `\n\nPrevious routine (built ${previousRoutine.createdAt.toISOString().slice(0, 10)}):
-${previousRoutine.steps.map((s) => `- ${s.timeOfDay} ${s.order}. ${s.product.brand} — ${s.product.name}: ${s.rationale}`).join("\n")}
+${previousRoutine.steps.map((s) => `- ${s.timeOfDay} ${s.order}. ${describeStep(s)}`).join("\n")}
 Previous overview: ${previousRoutine.rationale}`
       : "";
 
@@ -200,10 +187,7 @@ Previous overview: ${previousRoutine.rationale}`
 About your skin: ${intake.questionnaire}
 
 ${profileLines.length > 0 ? profileLines.join("\n") + "\n\n" : ""}Products owned:
-${ownedRows.map(formatRow).join("\n")}
-
-Catalog candidates available for ADD/CHANGE suggestions (NOT owned — only use these ids for a NEW step, never invent one):
-${candidateRows.length > 0 ? candidateRows.map(formatRow).join("\n") : "(none available right now)"}${previousRoutineBlock}`;
+${ownedRows.map(formatRow).join("\n")}${previousRoutineBlock}`;
 
   const client = new Anthropic();
 
@@ -230,29 +214,39 @@ ${candidateRows.length > 0 ? candidateRows.map(formatRow).join("\n") : "(none av
     return { ok: false, reason: "refused", severity: parsed.severity, concern: parsed.concern, routing: parsed.routing };
   }
 
-  const validProductId = (id: string) => ownedIds.has(id) || candidateIds.has(id);
   const validRule = (n: number | null) => (n !== null && RULE_NUMBERS.includes(n) ? n : null);
 
   const validSteps = parsed.steps
-    .filter((s) => validProductId(s.productId))
     .map((s) => {
       const actuallyOwned = ownedIds.has(s.productId);
-      const alt = s.alternativeProductId && validProductId(s.alternativeProductId) ? s.alternativeProductId : null;
-      const proposal = s.proposal === "CHANGE" && !alt && s.alternativeFrequency === null ? "KEEP" : s.proposal;
+      // Only an "ADD" step can lack a real owned product behind it.
+      if (s.proposal !== "ADD" && !actuallyOwned) return null;
+      if (s.proposal === "ADD" && (!s.suggestedCategory || !s.suggestedDescription)) return null;
+
+      const isDescriptiveChange = s.proposal === "CHANGE" && !!s.suggestedDescription;
+
       return {
-        ...s,
+        matchKey: s.productId,
+        dbProductId: s.proposal === "ADD" ? null : s.productId,
+        timeOfDay: s.timeOfDay,
+        order: s.order,
+        rationale: s.rationale,
+        frequencyPerWeek: s.frequencyPerWeek,
+        timeCostMinutes: s.timeCostMinutes,
         ownership: (actuallyOwned ? "OWNED" : "NEW") as "OWNED" | "NEW",
-        proposal,
+        proposal: s.proposal,
         ruleCitation: validRule(s.ruleCitation),
-        alternativeProductId: proposal === "CHANGE" ? alt : null,
-        alternativeFrequency: proposal === "CHANGE" ? s.alternativeFrequency : null,
+        suggestedCategory: s.proposal === "ADD" ? s.suggestedCategory : null,
+        suggestedDescription: s.proposal === "ADD" || isDescriptiveChange ? s.suggestedDescription : null,
+        alternativeFrequency: s.proposal === "CHANGE" ? s.alternativeFrequency : null,
         budgetAdjustment: s.budgetAdjustment,
         budgetAdjustmentReason: s.budgetAdjustment !== "NONE" ? s.budgetAdjustmentReason : null,
       };
-    });
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
 
-  const stepKey = (productId: string, timeOfDay: string) => `${productId}::${timeOfDay}`;
-  const stepByKey = new Map(validSteps.map((s) => [stepKey(s.productId, s.timeOfDay), s]));
+  const stepKey = (matchKey: string, timeOfDay: string) => `${matchKey}::${timeOfDay}`;
+  const stepByKey = new Map(validSteps.map((s) => [stepKey(s.matchKey, s.timeOfDay), s]));
 
   // Defensive dedup/merge: at most one Pro Tip per step, and it always
   // agrees with that step's own resolved proposal — never two cards for
@@ -276,8 +270,8 @@ ${candidateRows.length > 0 ? candidateRows.map(formatRow).join("\n") : "(none av
       summary: survivors.map((t) => t.summary).join(" "),
       actionType: step.proposal as "ADD" | "REMOVE" | "CHANGE",
       ruleCitation: survivors.find((t) => t.ruleCitation !== null)?.ruleCitation ?? null,
-      stepProductId: step.productId,
-      stepTimeOfDay: step.timeOfDay,
+      matchKey: step.matchKey,
+      timeOfDay: step.timeOfDay,
     };
   });
 
@@ -300,7 +294,7 @@ ${candidateRows.length > 0 ? candidateRows.map(formatRow).join("\n") : "(none av
       const row = await tx.routineStep.create({
         data: {
           routineId: created.id,
-          productId: step.productId,
+          productId: step.dbProductId,
           timeOfDay: step.timeOfDay,
           order: step.order,
           rationale: step.rationale,
@@ -310,17 +304,18 @@ ${candidateRows.length > 0 ? candidateRows.map(formatRow).join("\n") : "(none av
           proposal: step.proposal,
           proposalReason: step.proposal !== "KEEP" ? step.rationale : null,
           ruleCitation: step.ruleCitation,
-          alternativeProductId: step.alternativeProductId,
+          suggestedCategory: step.suggestedCategory,
+          suggestedDescription: step.suggestedDescription,
           alternativeFrequency: step.alternativeFrequency,
           budgetAdjustment: step.budgetAdjustment,
           budgetAdjustmentReason: step.budgetAdjustmentReason,
         },
       });
-      stepIdByKey.set(stepKey(step.productId, step.timeOfDay), row.id);
+      stepIdByKey.set(stepKey(step.matchKey, step.timeOfDay), row.id);
     }
 
     for (const tip of validProTips) {
-      const stepId = stepIdByKey.get(stepKey(tip.stepProductId, tip.stepTimeOfDay));
+      const stepId = stepIdByKey.get(stepKey(tip.matchKey, tip.timeOfDay));
       if (!stepId) continue;
       await tx.proTip.create({
         data: {

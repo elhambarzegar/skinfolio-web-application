@@ -24,7 +24,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const unresolved = routine.steps.filter((step) => {
     // A still-pending ADD suggestion isn't committed content yet — its
     // Pro Tip is what needs a decision, not a low-confidence acknowledgment.
-    if (step.proposal === "ADD") return false;
+    if (step.proposal === "ADD" || !step.product) return false;
     const source = step.product.currentSource;
     const isLowConfidence = !source || confidenceBucket(source.confidenceScore) === "low";
     return isLowConfidence && step.ackLowConfidence == null;
