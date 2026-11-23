@@ -124,6 +124,18 @@ body {
   .btn-blue { background: var(--sky-deep); }
   .btn-block { width: 100%; }
   .btn-sm { min-height: 52px; font-size: 18px; padding: 6px 18px; }
+  /* Google button: white, same weight as .btn (Google asks for a plain light button). */
+  .gbtn {
+    width: 100%; min-height: 60px; padding: 8px 22px; border-radius: 18px;
+    border: 2px solid var(--ink); background: #fff; color: var(--ink);
+    font-size: 20px; font-weight: 700; line-height: 1.2;
+    display: inline-flex; align-items: center; justify-content: center; gap: 14px;
+    box-shadow: 0 3px 0 var(--ink); cursor: pointer;
+  }
+  .gbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .gbtn[disabled] { opacity: .6; cursor: not-allowed; box-shadow: none; }
+  .or-rule { display: flex; align-items: center; gap: 14px; color: var(--ink-2); font-size: 17px; font-weight: 700; }
+  .or-rule::before, .or-rule::after { content: ""; flex: 1; height: 2px; background: var(--blush); }
   .link-btn { min-height: 52px; padding: 0 8px; background: none; border: 0; font-size: 18px; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; color: var(--ink); }
 
   /* ── Badges: large, always carry a word, never colour alone ── */

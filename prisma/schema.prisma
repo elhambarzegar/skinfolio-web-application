@@ -15,8 +15,13 @@ datasource db {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
-  passwordHash String
+  // Null for an account that signs in with Google only.
+  passwordHash String?
   name         String?
+  image        String?
+  // Set when a provider (Google) has vouched that the person controls this
+  // address. Email-and-password signups leave it null until then.
+  emailVerified DateTime?
   createdAt    DateTime @default(now())
   // IANA zone (e.g. "America/Vancouver"), synced from the browser, so
   // "today" and the weekday are the user's own, not the server's.
