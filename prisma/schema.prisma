@@ -18,10 +18,14 @@ model User {
   passwordHash String
   name         String?
   createdAt    DateTime @default(now())
+  // IANA zone (e.g. "America/Vancouver"), synced from the browser, so
+  // "today" and the weekday are the user's own, not the server's.
+  timezone     String   @default("UTC")
 
   intakeResponses IntakeResponse[]
   routines        Routine[]
   checkIns        CheckIn[]
+  stepLogs        StepLog[]
 }
 
 // --- Intake ---------------------------------------------------------------
@@ -152,10 +156,14 @@ model Routine {
   // LLM-generated URL.
   overviewSources Int[]
   createdAt      DateTime      @default(now())
+  // When the user approved this routine. Adherence reports only count days
+  // from here on; null on routines approved before this field existed.
+  activatedAt    DateTime?
 
   steps    RoutineStep[]
   checkIns CheckIn[]
   proTips  ProTip[]
+  stepLogs StepLog[]
 }
 
 enum TimeOfDay {
@@ -218,7 +226,30 @@ model RoutineStep {
   budgetAdjustment       BudgetAdjustment @default(NONE)
   budgetAdjustmentReason String?
 
-  proTips ProTip[]
+  proTips  ProTip[]
+  stepLogs StepLog[]
+}
+
+// One row per scheduled step per local calendar day. The row is created
+// when the day's checklist is first opened (a snapshot of "what was due"),
+// and doneAt is filled in when the user ticks it off. Reports are built
+// from these rows.
+model StepLog {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routineId String
+  routine   Routine     @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  stepId    String
+  step      RoutineStep @relation(fields: [stepId], references: [id])
+  // The user's local day as "YYYY-MM-DD". A string, so a day never shifts
+  // when the server's clock or zone differs from the user's.
+  date      String
+  doneAt    DateTime?
+  createdAt DateTime    @default(now())
+
+  @@unique([stepId, date])
+  @@index([userId, date])
 }
 
 enum ProTipAction {

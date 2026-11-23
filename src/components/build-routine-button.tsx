@@ -71,21 +71,14 @@ export function BuildRoutineButton({ label = "Build my routine" }: { label?: str
 
   if (refusal) {
     return (
-      <div
-        className={`mt-6 border rounded-[10px] px-4 py-3.5 max-w-md ${
-          refusal.severity === "emergency"
-            ? "border-danger/50 bg-danger/10"
-            : "border-warn/50 bg-warn/10"
-        }`}
-      >
-        <p className="text-[14px] font-bold text-ink">
+      <div className={`callout ${refusal.severity === "emergency" ? "c-blush" : "c-sun"}`}>
+        <p className="text-[21px] font-bold">
           {refusal.severity === "emergency" ? "This needs urgent care" : "This needs a dermatologist"}
         </p>
-        <p className="mt-1 text-[13px] text-ink-2 leading-relaxed">{refusal.concern}</p>
-        <p className="mt-2 text-[13px] text-ink font-semibold">{refusal.routing}</p>
-        <p className="mt-3 text-[12px] text-ink-3">
-          We didn&rsquo;t build a routine — this isn&rsquo;t something a product
-          recommendation should weigh in on.
+        <p>{refusal.concern}</p>
+        <p className="font-bold">{refusal.routing}</p>
+        <p className="note" style={{ color: "var(--ink)" }}>
+          We didn&rsquo;t build a routine. This isn&rsquo;t something a product recommendation should weigh in on.
         </p>
       </div>
     );
@@ -93,30 +86,26 @@ export function BuildRoutineButton({ label = "Build my routine" }: { label?: str
 
   if (loading) {
     return (
-      <div className="max-w-md">
-        <div className="flex flex-col gap-1.5">
-          {LOADING_STEPS.slice(0, revealedCount).map((step) => (
-            <div key={step} className="text-[13px] flex items-center gap-2 text-ink-2">
-              <span className="text-ok">✓</span>
-              {step}…
-            </div>
-          ))}
-        </div>
+      <div className="flex flex-col gap-3" aria-live="polite">
+        {LOADING_STEPS.slice(0, revealedCount).map((step) => (
+          <div key={step} className="flex items-center gap-3 text-[19px]">
+            <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full border-2 border-ink bg-mint-deep text-[16px] font-bold">
+              ✓
+            </span>
+            {step}…
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={handleClick}
-        className="text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90"
-      >
+    <div className="flex flex-col gap-3">
+      <button type="button" onClick={handleClick} className="btn btn-block">
         {label}
       </button>
       {error && (
-        <p className="mt-3 text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2 max-w-md">
+        <p role="alert" className="callout c-blush font-bold">
           {error}
         </p>
       )}

@@ -8,12 +8,8 @@ export function AddProductButton() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="text-[13px] font-semibold text-accent whitespace-nowrap"
-      >
-        + Add product to routine
+      <button type="button" onClick={() => setOpen(true)} className="btn btn-block">
+        Add a product
       </button>
       {open && <AddProductModal onClose={() => setOpen(false)} />}
     </>

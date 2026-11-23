@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BRAND } from "@/lib/brand";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -39,12 +40,12 @@ export default function SignupPage() {
       });
 
       if (signInResult?.error) {
-        setError("Account created, but sign-in failed. Try logging in.");
+        setError("Account created, but sign-in failed. Try signing in.");
         setSubmitting(false);
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/today");
       router.refresh();
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -53,73 +54,69 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center px-6 py-16">
-      <div className="w-full max-w-sm">
-        <Link href="/" className="text-[14px] font-bold text-ink-2 hover:text-ink">
-          ← Skinfolio
-        </Link>
-        <h1 className="mt-6 text-[26px] font-bold text-ink">Create your account</h1>
-        <p className="mt-1 text-[14px] text-ink-2">
-          Takes about a minute. Your routine comes next.
-        </p>
+    <div className="flex flex-1 items-center justify-center px-5 py-12">
+      <div className="flex w-full max-w-[440px] flex-col gap-6">
+        <div>
+          <Link href="/" className="eyebrow">
+            {BRAND.name}
+          </Link>
+          <h1 className="page-title mt-2">Create your account</h1>
+          <p className="sub mt-1">Takes about a minute. Your routine comes next.</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-semibold text-ink-2">Name (optional)</span>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <label className="flex flex-col gap-2">
+            <span className="field-label">Name (optional)</span>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
+              className="input"
               autoComplete="name"
             />
           </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-semibold text-ink-2">Email</span>
+          <label className="flex flex-col gap-2">
+            <span className="field-label">Email</span>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
+              className="input"
               autoComplete="email"
             />
           </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-semibold text-ink-2">Password</span>
+          <label className="flex flex-col gap-2">
+            <span className="field-label">Password</span>
             <input
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
+              className="input"
               autoComplete="new-password"
             />
-            <span className="text-[12px] text-ink-3">At least 8 characters.</span>
+            <span className="note">At least 8 characters.</span>
           </label>
 
           {error && (
-            <p className="text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2">
+            <p role="alert" className="callout c-blush font-bold">
               {error}
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 text-[15px] font-bold bg-accent text-accent-ink px-4 py-2.5 rounded-[6px] hover:opacity-90 disabled:opacity-50"
-          >
+          <button type="submit" disabled={submitting} className="btn btn-block">
             {submitting ? "Creating account…" : "Create account"}
           </button>
         </form>
 
-        <p className="mt-6 text-[13px] text-ink-2">
+        <p className="sub">
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold text-accent">
-            Log in
+          <Link href="/login" className="font-bold text-ink underline underline-offset-4">
+            Sign in
           </Link>
         </p>
       </div>

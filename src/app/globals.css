@@ -1,62 +1,51 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────
-   Design tokens carried over from the Skinfolio capstone prototype
-   (design/TOKENS.css there). "Studio" is the light palette that was
-   locked in as the product's look; "Ops" (dark) becomes the
-   prefers-color-scheme dark variant — both already existed as
-   intentional alternates in the original token system.
+   Design system: cream ground, blush / sky / mint accents, dark plum ink.
+   Built for readers over 40: 19px body text, 60px buttons, nothing under
+   16px, and dark ink on pastel at 7.7:1 or better (guidelines ask 4.5:1).
+   Light only, by choice.
+
+   The original token names (bg, ink, accent, …) are kept so screens that
+   haven't been redesigned yet pick up the new palette automatically.
    ───────────────────────────────────────────────────────────────── */
 
 :root {
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
 
-  --fs-0: 13px;
-  --fs-1: 14px;
-  --fs-2: 16px;
-  --fs-3: 20px;
-  --fs-4: 28px;
-  --lh: 1.5;
+  --cream: #FFF8EC;
+  --paper: #FFFDF9;
+  --line: #E8D9C6;
+  --blush: #F8D7DD;
+  --blush-deep: #F2AEBD;
+  --sky: #D3EAF8;
+  --sky-deep: #A9D3EE;
+  --mint: #D6F0E0;
+  --mint-deep: #A5DDBC;
+  --sun: #FBE7B0;
+  --alert: #F6B7BC;
 
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  --radius: 10px;
-  --radius-sm: 6px;
+  --ink: #2F2A36;
+  --ink-2: #5B5365;
+  --ink-3: #6B6375;
 
-  --ok: #1FA971;
-  --warn: #D98E04;
-  --danger: #D64545;
-  --info: #3B82F6;
+  /* Semantic text colours (darker than the pastels so they read as text) */
+  --ok: #256A47;
+  --warn: #8A5A00;
+  --danger: #A3303F;
+  --info: #2D5F8A;
 
-  /* Studio (light) — default */
-  --bg: #F6F7FB;
-  --bg-raise: #FFFFFF;
-  --bg-inset: #EEF0F6;
-  --line: #E1E5EF;
-  --ink: #131A2A;
-  --ink-2: #4C5670;
-  --ink-3: #8B93A9;
-  --accent: #4056C9;
+  /* Legacy names → new palette */
+  --bg: var(--cream);
+  --bg-raise: var(--paper);
+  --bg-inset: #F6EBDA;
+  --accent: #A8395A;
   --accent-ink: #FFFFFF;
-  --chip: #EDF0FA;
-  --shadow: 0 1px 2px rgba(19,26,42,.06), 0 12px 28px -14px rgba(19,26,42,.18);
-}
+  --chip: var(--sky);
+  --shadow: 0 1px 2px rgba(47,42,54,.06), 0 12px 28px -14px rgba(47,42,54,.2);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Ops (dark) */
-    --bg: #0F1420;
-    --bg-raise: #171E2E;
-    --bg-inset: #0B0F18;
-    --line: #263049;
-    --ink: #E8EDF7;
-    --ink-2: #9AA6BF;
-    --ink-3: #5E6A85;
-    --accent: #6C8CFF;
-    --accent-ink: #FFFFFF;
-    --chip: #1E2740;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.55);
-  }
+  --font-ui: var(--font-body), "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-head: var(--font-display), Georgia, serif;
 }
 
 @theme inline {
@@ -74,15 +63,127 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-info: var(--info);
+
+  --color-cream: var(--cream);
+  --color-paper: var(--paper);
+  --color-blush: var(--blush);
+  --color-blush-deep: var(--blush-deep);
+  --color-sky: var(--sky);
+  --color-sky-deep: var(--sky-deep);
+  --color-mint: var(--mint);
+  --color-mint-deep: var(--mint-deep);
+  --color-sun: var(--sun);
+  --color-alert: var(--alert);
+
+  --font-sans: var(--font-ui);
+  --font-heading: var(--font-head);
 }
 
 * { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--fs-1);
-  line-height: var(--lh);
+  font-size: 19px;
+  line-height: 1.5;
+}
+
+/* A clear focus ring for keyboard users, on everything. */
+:focus-visible {
+  outline: 4px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+@layer components {
+  .page-title { font-family: var(--font-head); font-weight: 700; font-size: 32px; line-height: 1.15; text-wrap: balance; }
+  .eyebrow { font-size: 16px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+  .sub { color: var(--ink-2); font-size: 18px; }
+  .note { font-size: 16px; color: var(--ink-2); }
+
+  /* ── Buttons: big, with a hard edge so they look pressable ── */
+  .btn {
+    min-height: 60px; padding: 8px 22px; border-radius: 18px;
+    border: 2px solid var(--ink); background: var(--blush-deep); color: var(--ink);
+    font-size: 20px; font-weight: 700; line-height: 1.2; text-align: center; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 3px 0 var(--ink); cursor: pointer;
+  }
+  .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; }
+  .btn-2 { background: var(--paper); }
+  .btn-ok { background: var(--mint-deep); }
+  .btn-blue { background: var(--sky-deep); }
+  .btn-block { width: 100%; }
+  .btn-sm { min-height: 52px; font-size: 18px; padding: 6px 18px; }
+  .link-btn { min-height: 52px; padding: 0 8px; background: none; border: 0; font-size: 18px; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; color: var(--ink); }
+
+  /* ── Badges: large, always carry a word, never colour alone ── */
+  .badge { display: inline-flex; align-items: center; min-height: 36px; padding: 2px 14px; border-radius: 999px; font-size: 17px; font-weight: 700; line-height: 1.2; border: 2px solid transparent; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .b-cat { background: var(--sky); }
+  .b-freq { background: var(--sun); }
+  .b-time { background: var(--paper); border-color: var(--line); }
+  .b-rx { background: var(--blush-deep); }
+  .b-new { background: var(--sun); }
+  .b-out { background: var(--alert); }
+  .b-ok { background: var(--mint); }
+
+  /* ── Surfaces ── */
+  .card { background: var(--paper); border: 2px solid var(--line); border-radius: 22px; padding: 18px; }
+  .callout { border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .callout h2 { font-size: 22px; font-weight: 700; line-height: 1.25; }
+  .c-blush { background: var(--blush); }
+  .c-sky { background: var(--sky); }
+  .c-mint { background: var(--mint); }
+  .c-sun { background: var(--sun); }
+
+  /* ── Segmented control (Morning / Evening) ── */
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--blush); padding: 6px; border-radius: 20px; }
+  .seg button { min-height: 58px; border-radius: 15px; border: 2px solid transparent; background: transparent; font-size: 20px; font-weight: 700; cursor: pointer; color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--paper); border-color: var(--ink); }
+  .seg .count { font-size: 17px; font-weight: 400; color: var(--ink-2); margin-left: 6px; }
+
+  /* ── Progress ring ── */
+  .ring-card { display: flex; align-items: center; gap: 18px; background: var(--sky); border-radius: 24px; padding: 18px; }
+  /* Not ".ring": Tailwind ships a "ring" utility that would draw a box around it. */
+  .progress-ring { position: relative; width: 104px; height: 104px; flex: none; }
+  .progress-ring svg { width: 104px; height: 104px; transform: rotate(-90deg); }
+  .progress-ring circle { fill: none; stroke-width: 12; }
+  .progress-ring .bg { stroke: var(--paper); }
+  .progress-ring .arc { stroke: var(--ink); stroke-linecap: round; transition: stroke-dasharray .35s; }
+  .ring-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; line-height: 1.1; text-align: center; }
+  .ring-num small { font-size: 16px; font-weight: 400; }
+
+  /* ── Routine steps on Today ── */
+  .steps { display: flex; flex-direction: column; gap: 14px; }
+  .step { background: var(--paper); border: 2px solid var(--line); border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .step-top { display: flex; gap: 14px; align-items: flex-start; }
+  .step-num { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--blush); border: 2px solid var(--ink); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 19px; }
+  .step h3 { font-size: 21px; font-weight: 700; line-height: 1.2; }
+  .step .brand { color: var(--ink-2); font-size: 17px; }
+  .step.is-done { background: var(--mint); border-color: var(--mint-deep); }
+  .step.is-done .step-num { background: var(--mint-deep); }
+
+  /* ── Accordions ── */
+  details.acc { background: var(--paper); border: 2px solid var(--line); border-radius: 22px; }
+  details.acc > summary { list-style: none; min-height: 64px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 20px; font-weight: 700; cursor: pointer; }
+  details.acc > summary::-webkit-details-marker { display: none; }
+  details.acc > summary::after { content: ""; width: 12px; height: 12px; border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: rotate(45deg); margin-right: 4px; transition: transform .2s; flex: none; }
+  details.acc[open] > summary::after { transform: rotate(-135deg); }
+  .acc-body { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .acc-row { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 2px solid var(--line); }
+  .acc-row b { font-size: 19px; }
+
+  /* ── Form fields ── */
+  .input { width: 100%; min-height: 60px; padding: 0 16px; border-radius: 16px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); font-size: 20px; font-family: inherit; }
+  .field-label { font-weight: 700; font-size: 19px; }
 }

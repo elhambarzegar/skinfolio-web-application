@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { CATEGORY_LABEL } from "@/lib/productCategory";
 import { ProTipsList } from "@/components/pro-tips-list";
 import type { ProTipView } from "@/components/pro-tip-card";
@@ -170,7 +169,7 @@ export function RoutineReview({
         setAccepting(false);
         return;
       }
-      router.push("/dashboard");
+      router.push("/today");
       router.refresh();
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -183,17 +182,15 @@ export function RoutineReview({
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="flex items-center justify-between px-6 sm:px-10 py-5 border-b border-line">
-        <Link href="/dashboard" className="text-[15px] font-bold tracking-tight text-ink">
-          Skinfolio
-        </Link>
-        <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full bg-chip text-ink-2 uppercase tracking-wide">
-          {status}
-        </span>
-      </header>
-
-      <main className="flex-1 px-6 sm:px-10 py-12">
-        <div className="max-w-2xl mx-auto">
+      <main className="flex-1">
+        <div>
+          <div className="mb-4">
+            <span
+              className={`badge ${status === "ACTIVE" ? "b-ok" : status === "PAUSED" ? "b-out" : "b-new"}`}
+            >
+              {status === "ACTIVE" ? "In use" : status === "PAUSED" ? "Paused" : "Waiting for your OK"}
+            </span>
+          </div>
           {/* Part 1 — brief overview */}
           <h1 className="text-[22px] font-bold text-ink">Your routine</h1>
           <p className="mt-2 text-[14px] text-ink-2 leading-relaxed whitespace-pre-line">{rationale}</p>

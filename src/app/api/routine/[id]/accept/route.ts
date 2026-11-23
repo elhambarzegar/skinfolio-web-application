@@ -49,7 +49,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     });
     await tx.routine.update({
       where: { id: routine.id },
-      data: { status: "ACTIVE" },
+      data: { status: "ACTIVE", activatedAt: new Date() },
     });
   });
 

@@ -2,6 +2,22 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { classifyCheckIn, type PriorCheckIn } from "@/lib/checkin/classify";
+import { localNow, safeTimezone } from "@/lib/dates";
+
+/**
+ * Adherence comes from what was ticked off on Today, so the check-in doesn't
+ * ask the same question twice. Nothing due means nothing was skipped.
+ */
+async function deriveAdherence(userId: string, routineId: string, timeOfDay: "AM" | "PM"): Promise<"DONE" | "SKIPPED"> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+  const { date } = localNow(safeTimezone(user?.timezone) ?? "UTC");
+  const logs = await prisma.stepLog.findMany({
+    where: { userId, routineId, date, step: { timeOfDay } },
+    select: { doneAt: true },
+  });
+  if (logs.length === 0) return "DONE";
+  return logs.some((l) => l.doneAt) ? "DONE" : "SKIPPED";
+}
 
 function dayNumberFor(routineCreatedAt: Date, now: Date): number {
   const msPerDay = 1000 * 60 * 60 * 24;
@@ -21,14 +37,13 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const timeOfDay = body?.timeOfDay === "PM" ? "PM" : body?.timeOfDay === "AM" ? "AM" : null;
-  const adherence = body?.adherence === "SKIPPED" ? "SKIPPED" : body?.adherence === "DONE" ? "DONE" : null;
   const symptomsText =
     typeof body?.symptomsText === "string" && body.symptomsText.trim().length > 0
       ? body.symptomsText.trim()
       : null;
 
-  if (!timeOfDay || !adherence) {
-    return NextResponse.json({ error: "Missing time of day or adherence." }, { status: 400 });
+  if (!timeOfDay) {
+    return NextResponse.json({ error: "Say whether this is for the morning or the evening." }, { status: 400 });
   }
 
   const routine = await prisma.routine.findFirst({
@@ -41,6 +56,7 @@ export async function POST(req: Request) {
   }
 
   const dayNumber = dayNumberFor(routine.createdAt, new Date());
+  const adherence = await deriveAdherence(session.user.id, routine.id, timeOfDay);
 
   const existing = await prisma.checkIn.findFirst({
     where: { routineId: routine.id, dayNumber, timeOfDay },

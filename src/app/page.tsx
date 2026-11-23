@@ -1,83 +1,60 @@
 import Link from "next/link";
+import { BRAND } from "@/lib/brand";
 
 const principles = [
   {
     title: "A routine, not a shelf",
-    body: "Tell it your concerns and what you already own. It builds one ordered AM/PM routine, not a list of products to buy.",
+    body: "Tell us your concerns and what you already own. You get one ordered morning and evening routine, not a list of things to buy.",
   },
   {
     title: "Every step has a reason",
-    body: "Each recommendation comes with the rule it's based on — sunscreen goes last, retinoids are night-only, no unexplained swaps.",
+    body: "Each recommendation names the rule behind it: sunscreen goes last, retinoids are for night. No unexplained swaps.",
   },
   {
-    title: "You always have the last word",
-    body: "Accept it, edit a step, or flag a concern before it becomes your routine. Nothing is final without you.",
+    title: "You have the last word",
+    body: "Approve it, change a step, or say no before anything becomes your routine.",
   },
 ];
 
 export default function Home() {
   return (
-    <div className="flex-1 flex flex-col">
-      <header className="flex items-center justify-between px-6 sm:px-10 py-5 border-b border-line">
-        <span className="text-[15px] font-bold tracking-tight text-ink">Skinfolio</span>
-        <nav className="flex items-center gap-3">
-          <Link
-            href="/login"
-            className="text-[14px] font-semibold text-ink-2 hover:text-ink px-3 py-1.5"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/signup"
-            className="text-[14px] font-bold bg-accent text-accent-ink px-4 py-1.5 rounded-[6px] hover:opacity-90"
-          >
-            Get started
-          </Link>
-        </nav>
+    <div className="flex flex-1 flex-col">
+      <header className="flex items-center justify-between gap-3 px-5 py-4 sm:px-10">
+        <span className="font-heading text-[28px] font-bold leading-none">{BRAND.name}</span>
+        <Link href="/login" className="btn btn-2 btn-sm">
+          Sign in
+        </Link>
       </header>
 
-      <main className="flex-1 flex flex-col items-center px-6 sm:px-10 py-20 sm:py-28 text-center">
-        <p className="text-[13px] font-bold tracking-[0.14em] uppercase text-accent mb-4">
-          A skincare routine you can actually check
+      <main className="flex flex-1 flex-col items-center px-5 py-14 text-center sm:py-20">
+        <p className="eyebrow">{BRAND.tagline}</p>
+        <h1 className="page-title mt-3 max-w-[18ch] text-[40px] sm:text-[56px]">Skin advice with its reasoning on the label</h1>
+        <p className="mt-5 max-w-[34rem] text-[21px] text-ink-2">
+          Get a morning and evening routine from the products you already own, checked against dermatology-sourced
+          ingredient rules. Then tick it off, one step at a time.
         </p>
-        <h1 className="text-[34px] sm:text-[48px] leading-[1.08] font-bold text-ink max-w-3xl text-balance">
-          Skin advice with its reasoning on the label
-        </h1>
-        <p className="mt-5 text-[16px] sm:text-[18px] text-ink-2 max-w-xl">
-          Skinfolio builds you a personalized AM/PM routine, checks it against
-          dermatology-sourced ingredient rules, and shows its work — so you can
-          decide, not just trust.
-        </p>
-        <div className="mt-8 flex items-center gap-3">
-          <Link
-            href="/signup"
-            className="text-[15px] font-bold bg-accent text-accent-ink px-6 py-3 rounded-[6px] hover:opacity-90"
-          >
+        <div className="mt-8 flex w-full max-w-[420px] flex-col gap-3">
+          <Link href="/signup" className="btn btn-block">
             Build my routine
           </Link>
-          <Link
-            href="/login"
-            className="text-[15px] font-semibold text-ink-2 hover:text-ink px-6 py-3"
-          >
+          <Link href="/login" className="btn btn-2 btn-block">
             I already have an account
           </Link>
         </div>
 
-        <div className="mt-20 grid gap-4 sm:grid-cols-3 max-w-4xl text-left w-full">
-          {principles.map((p) => (
-            <div
-              key={p.title}
-              className="bg-bg-raise border border-line rounded-[10px] p-5"
-            >
-              <h3 className="text-[15px] font-bold text-ink mb-1.5">{p.title}</h3>
-              <p className="text-[14px] text-ink-2 leading-relaxed">{p.body}</p>
+        <div className="mt-16 grid w-full max-w-[960px] gap-4 text-left sm:grid-cols-3">
+          {principles.map((p, i) => (
+            <div key={p.title} className={`callout ${["c-blush", "c-sky", "c-mint"][i]}`}>
+              <h2>{p.title}</h2>
+              <p>{p.body}</p>
             </div>
           ))}
         </div>
       </main>
 
-      <footer className="px-6 sm:px-10 py-6 border-t border-line text-[13px] text-ink-3 text-center">
-        Skinfolio is a personal skincare planning tool, not a medical device. For a diagnosis or a specific skin condition, see a board-certified dermatologist.
+      <footer className="px-5 py-8 text-center note sm:px-10">
+        {BRAND.name} is a personal skincare planning tool, not a medical device. For a diagnosis or a specific skin
+        condition, see a board-certified dermatologist.
       </footer>
     </div>
   );

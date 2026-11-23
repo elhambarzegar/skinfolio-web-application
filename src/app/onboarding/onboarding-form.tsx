@@ -155,7 +155,7 @@ export function OnboardingForm() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/today");
       router.refresh();
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
