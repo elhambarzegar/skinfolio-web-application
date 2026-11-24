@@ -185,9 +185,8 @@ export function ProductSearchRow({
           className="input disabled:opacity-50"
         />
         {productId && (
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[16px] font-bold text-ok">
-            ✓ In catalog
-          </span>
+          // Sits under the field, never over the typed name.
+          <p className="mt-1.5 px-1 text-[17px] font-bold text-ok">✓ Found in our catalog</p>
         )}
         {nameOpen && !productId && (
           <div className="suggest">
