@@ -47,3 +47,8 @@ export function daysLabel(frequencyPerWeek: number): string | null {
   if (days.length === 7) return null;
   return days.map((d) => WEEKDAY_SHORT[d - 1]).join(" · ");
 }
+
+/** "Every day", "Mon · Wed · Fri" — how often, in words a person would say. */
+export function freqPhrase(frequencyPerWeek: number): string {
+  return daysLabel(frequencyPerWeek) ?? "Every day";
+}

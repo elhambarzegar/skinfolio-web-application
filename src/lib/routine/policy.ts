@@ -105,3 +105,18 @@ Rule 11 — EMERGENCY, supersedes all other rules: "trouble breathing," "can't s
 
 A red-flag or emergency match means: do not generate a routine. Refuse and route the person to the appropriate care instead.
 `.trim();
+
+/**
+ * The agent is told never to write rule numbers in its sentences, but older
+ * saved text has them as a bracket at the end of a clause, like
+ * "Sunscreen goes last (Rule 1)." or "(Rules 2 and 3)". Those mean nothing to
+ * a reader, so they are removed wherever the text is shown. The real source
+ * link is shown separately.
+ */
+export function stripRuleNumbers(text: string): string {
+  return text
+    .replace(/\s*\((?:see\s+)?rules?\s*\d+(?:\s*(?:,|and|&|\/)\s*(?:rules?\s*)?\d+)*\)/gi, "")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}

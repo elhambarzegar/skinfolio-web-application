@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { resolveProductSource } from "@/lib/productLookup";
+import { lookupMissingSources } from "@/lib/productLookup";
 import { resolveOwnedProducts, type OwnedProductInput } from "@/lib/productLookup/resolveOwnedProducts";
 import { compareProductsToRoutine } from "@/lib/routine/compareProducts";
 
@@ -34,13 +34,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Add at least one product." }, { status: 400 });
   }
 
-  const { productIds, newProductIds } = await prisma.$transaction((tx) => resolveOwnedProducts(tx, products));
+  // Optional: check against a routine still being reviewed, and/or fill one
+  // of its suggested gaps. Only the person's own routine is ever used.
+  const routineId = typeof body?.routineId === "string" ? body.routineId : undefined;
+  const fillStepId = typeof body?.fillStepId === "string" ? body.fillStepId : undefined;
+  if (routineId) {
+    const owned = await prisma.routine.findFirst({
+      where: { id: routineId, userId: session.user.id, status: { not: "ARCHIVED" } },
+      select: { id: true },
+    });
+    if (!owned) return NextResponse.json({ error: "Routine not found." }, { status: 404 });
+  }
 
-  // Wait for lookups here (unlike intake's fire-and-forget) — the
-  // comparison right below needs whatever ingredient data is available.
-  await Promise.allSettled(newProductIds.map((id) => resolveProductSource(id)));
+  const { productIds } = await prisma.$transaction((tx) => resolveOwnedProducts(tx, products));
 
-  const result = await compareProductsToRoutine(session.user.id, productIds);
+  // Wait for lookups here (unlike intake's fire-and-forget) — the comparison
+  // right below needs whatever ingredient data is available. This also
+  // retries products whose earlier lookup found nothing.
+  await lookupMissingSources(productIds);
+
+  const result = await compareProductsToRoutine(session.user.id, productIds, { routineId, fillStepId });
 
   if (!result.ok) {
     if (result.reason === "no_routine") {

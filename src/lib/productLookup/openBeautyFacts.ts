@@ -1,3 +1,5 @@
+import { cleanProductName } from "./cleanName";
+
 type OBFProduct = {
   product_name?: string;
   brands?: string;
@@ -26,7 +28,7 @@ export async function searchOpenBeautyFacts(
   brand: string,
   name: string
 ): Promise<OpenBeautyFactsMatch | null> {
-  const searchTerms = encodeURIComponent(`${brand} ${name}`);
+  const searchTerms = encodeURIComponent(`${brand} ${cleanProductName(name) || name}`);
   const url =
     `https://world.openbeautyfacts.org/cgi/search.pl` +
     `?search_terms=${searchTerms}&search_simple=1&action=process&json=1` +

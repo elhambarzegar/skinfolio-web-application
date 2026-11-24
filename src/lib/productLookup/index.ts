@@ -1,3 +1,4 @@
+import type { ProductStep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { searchOpenBeautyFacts } from "./openBeautyFacts";
 import { searchViaWebAgent, type AgentDatePrecision } from "./webSearchAgent";
@@ -27,6 +28,9 @@ type ResolvedSource = {
   extraction: "structured" | "labeled";
 };
 
+/** A product with no ingredients is looked up again after this long, never on every request. */
+const RETRY_AFTER_MS = 6 * 60 * 60 * 1000;
+
 /**
  * Looks up a product's ingredient list: Open Beauty Facts first (free,
  * structured, no key needed), Claude's web-search agent as fallback (needs
@@ -39,6 +43,7 @@ export async function resolveProductSource(productId: string): Promise<void> {
   if (!product) return;
 
   let resolved: ResolvedSource | null = null;
+  let category: ProductStep | null = null;
 
   try {
     const obf = await searchOpenBeautyFacts(product.brand, product.name);
@@ -79,10 +84,22 @@ export async function resolveProductSource(productId: string): Promise<void> {
           extraction: "labeled",
         };
       }
+      category = agent?.category ?? null;
     } catch (err) {
       console.error(`[productLookup] web search agent lookup failed for ${productId}:`, err);
     }
   }
+
+  // Remember that we tried, found or not, so a failure can be retried later
+  // without hammering the search on every request.
+  await prisma.product.update({
+    where: { id: product.id },
+    data: {
+      lastLookupAt: new Date(),
+      // A product added by hand starts as "OTHER"; fill in what it is for.
+      ...(product.step === "OTHER" && category && category !== "OTHER" ? { step: category } : {}),
+    },
+  });
 
   if (!resolved) return;
 
@@ -121,4 +138,24 @@ export async function resolveProductSource(productId: string): Promise<void> {
       data: { currentSourceId: newSource.id },
     });
   });
+}
+
+/**
+ * Looks up ingredients for any of these products that don't have them yet,
+ * waiting for the answers. Covers brand-new products and ones whose earlier
+ * lookup failed (a product with no ingredients is retried after a few hours,
+ * not forever treated as "unknown").
+ */
+export async function lookupMissingSources(productIds: string[]): Promise<void> {
+  if (productIds.length === 0) return;
+  const cutoff = new Date(Date.now() - RETRY_AFTER_MS);
+  const due = await prisma.product.findMany({
+    where: {
+      id: { in: productIds },
+      currentSourceId: null,
+      OR: [{ lastLookupAt: null }, { lastLookupAt: { lt: cutoff } }],
+    },
+    select: { id: true },
+  });
+  await Promise.allSettled(due.map((p) => resolveProductSource(p.id)));
 }

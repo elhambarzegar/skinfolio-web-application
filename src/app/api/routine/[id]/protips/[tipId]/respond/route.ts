@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { tipKind } from "@/lib/routine/tipKind";
 import type { Prisma } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
 
 /**
  * The app never names a specific replacement/addition — every ADD and
- * CHANGE tip is a description plus shop-search links. So there's nothing
- * concrete to "apply" on accept: the resolution here just settles the
- * step's pending state either way. If the person actually buys something,
- * they add it for real via the separate add-product flow.
+ * CHANGE tip is a description plus shop-search links. A tip that is only
+ * "go and buy something" can't be accepted: accepting means nothing until a
+ * real product exists. Those tips are settled by adding the product (see
+ * add-product/integrate), and here they can only be skipped. Tips that
+ * change something real (remove a product, change how often it's used) are
+ * accepted or rejected as before. See tipKind.
  */
 async function applyResolution(tx: Tx, tip: { actionType: string; primaryStepId: string }, decision: "accept" | "reject") {
   const step = await tx.routineStep.findUnique({ where: { id: tip.primaryStepId } });
@@ -70,6 +73,22 @@ export async function POST(
   }
   if (tip.status !== "PENDING") {
     return NextResponse.json({ error: "This tip has already been responded to." }, { status: 400 });
+  }
+
+  if (decision === "accept") {
+    const step = await prisma.routineStep.findUnique({ where: { id: tip.primaryStepId } });
+    const kind = step ? tipKind(tip, step) : "decide";
+    if (kind !== "decide") {
+      return NextResponse.json(
+        {
+          error:
+            kind === "shop"
+              ? "Add the product you chose to accept this. Until then you can skip it."
+              : "This one is advice only, so there's nothing to accept. You can dismiss it.",
+        },
+        { status: 400 }
+      );
+    }
   }
 
   await prisma.$transaction(async (tx) => {

@@ -1,14 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProductSearchRow, type OwnedProductEntry } from "@/components/product-search-row";
 import { TypedSteps } from "@/components/typed-steps";
+import { freqPhrase } from "@/lib/schedule";
 
 type Row = OwnedProductEntry & { rowId: number };
 
 // A brand-new product can go through a real web-search lookup before we
-// even get to comparing it (up to ~2 minutes in the slow case) — without
+// even get to comparing it (a minute or two in the slow case) — without
 // visible progress that reads as stuck, not slow.
 const ANALYZE_STEPS = [
   "Looking up product details",
@@ -17,37 +19,75 @@ const ANALYZE_STEPS = [
   "Checking for conflicts",
 ];
 
+type Placement = {
+  timeOfDay: "AM" | "PM";
+  position: number;
+  frequencyPerWeek: number;
+  timeCostMinutes: number | null;
+};
+
 type CompatibilityResult = {
   productId: string;
   brand: string;
   name: string;
   compatibility: string;
   concern: "none" | "caution" | "conflict";
+  ruleCitation: number | null;
   ruleLabel: string | null;
   ruleUrl: string | null;
+  category: string;
+  ingredients: "verified" | "unverified" | "none";
+  placements: Placement[];
+  fillsStepId: string | null;
 };
 
-const CONCERN_STYLE: Record<CompatibilityResult["concern"], string> = {
-  none: "bg-ok/10 text-ok",
-  caution: "bg-warn/10 text-warn",
-  conflict: "bg-danger/10 text-danger",
+const CONCERN_BADGE: Record<CompatibilityResult["concern"], { cls: string; text: string }> = {
+  none: { cls: "b-ok", text: "✓ Fits well" },
+  caution: { cls: "b-new", text: "Use with care" },
+  conflict: { cls: "b-out", text: "Conflict" },
 };
 
-const CONCERN_LABEL: Record<CompatibilityResult["concern"], string> = {
-  none: "Fits well",
-  caution: "Use with care",
-  conflict: "Conflict",
-};
-
-export function AddProductModal({ onClose }: { onClose: () => void }) {
+/**
+ * Checks a product against the routine, then adds it. "Add" is the approval:
+ * the check is shown first, and nothing changes until that button is pressed.
+ *
+ * With `fill`, the product is meant for one of the routine's suggested gaps
+ * (a Pro Tip that says "look for X"), and takes that slot.
+ */
+export function AddProductModal({
+  onClose,
+  routineId,
+  fill,
+}: {
+  onClose: () => void;
+  /** Check against this routine (one still in review) instead of the one in use. */
+  routineId?: string;
+  fill?: { stepId: string; description: string };
+}) {
   const router = useRouter();
   const nextRowId = useRef(1);
   const [rows, setRows] = useState<Row[]>([{ rowId: 0, brand: "", name: "", productId: null }]);
-  const [phase, setPhase] = useState<"input" | "results">("input");
+  const [phase, setPhase] = useState<"input" | "results" | "done">("input");
   const [analyzing, setAnalyzing] = useState(false);
-  const [integrating, setIntegrating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CompatibilityResult[]>([]);
+  const [addedCount, setAddedCount] = useState(0);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !analyzing && !saving) close();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyzing, saving, phase]);
+
+  function close() {
+    // After an add, the page behind needs the new data.
+    if (phase === "done") router.refresh();
+    onClose();
+  }
 
   function updateRow(rowId: number, entry: OwnedProductEntry) {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...entry, rowId } : r)));
@@ -77,6 +117,8 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           products: cleaned.map(({ brand, name, productId }) => ({ brand, name, productId })),
+          routineId,
+          fillStepId: fill?.stepId,
         }),
       });
       const data = await res.json();
@@ -94,60 +136,82 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function handleIntegrate() {
+  async function handleAdd() {
     setError(null);
-    setIntegrating(true);
+    setSaving(true);
     try {
       const res = await fetch("/api/routine/add-product/integrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: results.map((r) => r.productId) }),
+        body: JSON.stringify({
+          routineId,
+          fillStepId: fill?.stepId,
+          items: results.map((r) => ({
+            productId: r.productId,
+            category: r.category,
+            rationale: r.compatibility,
+            ruleCitation: r.ruleCitation,
+            fillsStepId: r.fillsStepId,
+            placements: r.placements,
+          })),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Couldn't update the routine.");
-        setIntegrating(false);
+        setSaving(false);
         return;
       }
-      if (data.refused) {
-        setError(
-          `${data.concern} ${data.routing} We didn't rebuild the routine — this isn't something a product recommendation should weigh in on.`
-        );
-        setIntegrating(false);
-        return;
-      }
-      router.push(`/routine/${data.id}`);
-      router.refresh();
+      setAddedCount(data.added ?? 0);
+      setPhase("done");
+      setSaving(false);
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
-      setIntegrating(false);
+      setSaving(false);
     }
   }
 
+  const anyUnsure = results.some((r) => r.ingredients !== "verified");
+  const anyPlaced = !!fill || results.some((r) => r.placements.length > 0);
+  const addLabel = !anyPlaced ? "Save to my shelf only" : anyUnsure ? "Add anyway" : "Add to my routine";
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="modal-scrim" onClick={() => !analyzing && !saving && close()}>
       <div
-        className="bg-bg-raise border border-line rounded-[12px] max-w-lg w-full p-5 max-h-[85vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-product-title"
+        className="modal-card"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-[16px] font-bold text-ink">Add product{rows.length > 1 ? "s" : ""} to your routine</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="text-ink-3 hover:text-ink text-[20px] leading-none px-1"
-          >
+        <div className="modal-head">
+          <h2 id="add-product-title">
+            {phase === "done"
+              ? "Done"
+              : fill
+                ? "Add the product you chose"
+                : `Add product${rows.length > 1 ? "s" : ""} to your routine`}
+          </h2>
+          <button type="button" onClick={close} aria-label="Close" className="modal-x">
             ×
           </button>
         </div>
 
         {phase === "input" && (
           <>
-            <p className="text-[13px] text-ink-2 mb-4">
-              We&rsquo;ll check how it fits with what you&rsquo;re already using before anything changes.
-            </p>
-            <div className="flex flex-col gap-3">
+            {fill ? (
+              <div className="callout c-sky">
+                <p className="eyebrow">What we suggested</p>
+                <p className="text-[20px] font-bold">{fill.description}</p>
+                <p className="note">
+                  Type the product you picked. We&rsquo;ll check it against your routine before anything is added.
+                </p>
+              </div>
+            ) : (
+              <p className="sub">We&rsquo;ll check how it fits with what you&rsquo;re already using before anything changes.</p>
+            )}
+
+            <div className="flex flex-col gap-4">
               {rows.map((row) => (
                 <ProductSearchRow
                   key={row.rowId}
@@ -157,19 +221,21 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
                   showRemove={rows.length > 1}
                 />
               ))}
-              <button type="button" onClick={addRow} className="self-start text-[13px] font-semibold text-accent">
-                + Add another product
-              </button>
+              {!fill && (
+                <button type="button" onClick={addRow} className="link-btn self-start">
+                  + Add another product
+                </button>
+              )}
             </div>
 
             {error && (
-              <p className="mt-4 text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2">
+              <p role="alert" className="callout c-blush font-bold">
                 {error}
               </p>
             )}
 
             {analyzing ? (
-              <div className="mt-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-4">
                 <TypedSteps
                   lines={ANALYZE_STEPS}
                   label="Checking how this product fits your routine. A new product can take a couple of minutes."
@@ -180,11 +246,7 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
                 </p>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={handleAnalyze}
-                className="mt-5 w-full text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90"
-              >
+              <button type="button" onClick={handleAnalyze} className="btn btn-block">
                 Check fit
               </button>
             )}
@@ -193,62 +255,103 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
 
         {phase === "results" && (
           <>
-            <p className="text-[13px] text-ink-2 mb-4">
-              Here&rsquo;s how {results.length === 1 ? "it" : "they"} would fit with your current routine. Nothing
-              has changed yet.
+            <p className="sub">
+              Here&rsquo;s how {results.length === 1 ? "it" : "they"} would fit with your routine. Nothing has changed
+              yet.
             </p>
-            <div className="flex flex-col gap-3">
-              {results.map((r) => (
-                <div key={r.productId} className="border border-line rounded-[8px] p-3 bg-bg">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[14px] font-bold text-ink">
-                      {r.brand} — {r.name}
-                    </span>
-                    <span
-                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 ${CONCERN_STYLE[r.concern]}`}
-                    >
-                      {CONCERN_LABEL[r.concern]}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-[13px] text-ink-2 leading-relaxed">{r.compatibility}</p>
-                  {r.ruleLabel && (
-                    <p className="mt-1.5 text-[11px] text-ink-3">
-                      Source:{" "}
-                      {r.ruleUrl ? (
-                        <a href={r.ruleUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                          {r.ruleLabel}
-                        </a>
+
+            <div className="flex flex-col gap-4">
+              {results.map((r) => {
+                const badge = CONCERN_BADGE[r.concern];
+                return (
+                  <div key={r.productId} className="step">
+                    <div className="flex flex-col gap-1">
+                      <h3>{r.name}</h3>
+                      <p className="brand">{r.brand}</p>
+                    </div>
+                    <div className="badges">
+                      <span className={`badge ${badge.cls}`}>{badge.text}</span>
+                    </div>
+                    <p className="text-[19px] leading-relaxed">{r.compatibility}</p>
+
+                    {r.ingredients !== "verified" && (
+                      <p className="callout c-sun text-[18px]">
+                        {r.ingredients === "none"
+                          ? "We couldn't find this product's ingredients online, so this check goes by the kind of product only. You can add a photo of the label later to make it exact."
+                          : "We found an ingredient list, but couldn't confirm it's up to date. Treat this check as a good guess."}
+                      </p>
+                    )}
+
+                    <div className="flex flex-col gap-1">
+                      <p className="eyebrow">Where it would go</p>
+                      {fill ? (
+                        <p className="text-[19px] font-bold">It takes the slot we suggested in your routine.</p>
+                      ) : r.placements.length > 0 ? (
+                        <>
+                          {r.placements.map((p) => (
+                            <p key={p.timeOfDay} className="text-[19px] font-bold">
+                              {p.timeOfDay === "AM" ? "Morning" : "Evening"} · step {p.position} · {freqPhrase(p.frequencyPerWeek)}
+                            </p>
+                          ))}
+                          {r.fillsStepId && <p className="note">This takes the empty slot we suggested earlier.</p>}
+                        </>
                       ) : (
-                        r.ruleLabel
+                        <p className="text-[19px] font-bold">Not in your routine. It stays on your shelf.</p>
                       )}
-                    </p>
-                  )}
-                </div>
-              ))}
+                    </div>
+
+                    {r.ruleLabel && (
+                      <p className="note">
+                        Source:{" "}
+                        {r.ruleUrl ? (
+                          <a href={r.ruleUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
+                            {r.ruleLabel}
+                          </a>
+                        ) : (
+                          r.ruleLabel
+                        )}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {error && (
-              <p className="mt-4 text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2">
+              <p role="alert" className="callout c-blush font-bold">
                 {error}
               </p>
             )}
 
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPhase("input")}
-                disabled={integrating}
-                className="flex-1 text-[14px] font-semibold text-ink-2 border border-line rounded-[6px] py-2.5 disabled:opacity-50"
-              >
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={handleAdd} disabled={saving} className="btn btn-ok btn-block">
+                {saving ? "Adding…" : addLabel}
+              </button>
+              <button type="button" onClick={() => setPhase("input")} disabled={saving} className="btn btn-2 btn-block">
                 Back
               </button>
-              <button
-                type="button"
-                onClick={handleIntegrate}
-                disabled={integrating}
-                className="flex-1 text-[15px] font-bold bg-accent text-accent-ink rounded-[6px] py-2.5 hover:opacity-90 disabled:opacity-50"
-              >
-                {integrating ? "Updating routine…" : "Add to routine"}
+            </div>
+          </>
+        )}
+
+        {phase === "done" && (
+          <>
+            <div className="callout c-mint">
+              <h2>{addedCount > 0 ? "✓ Added to your routine" : "✓ Saved to your shelf"}</h2>
+              <p>
+                {addedCount > 0
+                  ? "It's in your routine now, and today's ticks are untouched."
+                  : "It isn't part of your routine, so nothing there changed."}
+              </p>
+            </div>
+            <div className="flex flex-col gap-3">
+              {addedCount > 0 && !routineId && (
+                <Link href="/routine" onClick={() => router.refresh()} className="btn btn-block">
+                  See my routine
+                </Link>
+              )}
+              <button type="button" onClick={close} className={`btn btn-block ${addedCount > 0 && !routineId ? "btn-2" : ""}`}>
+                Done
               </button>
             </div>
           </>

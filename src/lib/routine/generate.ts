@@ -84,7 +84,7 @@ Before anything else, check their own words (the "About your skin" text) against
 SAFETY TRIGGERS POLICY (intake red flags):
 ${INTAKE_SAFETY_TRIGGERS}
 
-If no red flag applies, build the routine using the ingredient rules policy below. Cite rules ONLY by number (e.g. 3) — never write out a URL or source name yourself, the app resolves the real citation from the number. Use null when no specific rule applies (rendered to the user as "none").
+If no red flag applies, build the routine using the ingredient rules policy below. Cite rules ONLY by number (e.g. 3) — never write out a URL or source name yourself, the app resolves the real citation from the number. Use null when no specific rule applies. Never write a rule number, or the word "Rule", inside any sentence you write (overview, rationale, tip summaries): the number goes only in the citation fields, and the app shows the real source separately. Write the reason itself in plain words instead.
 
 INGREDIENT RULES POLICY (numbered 1-10):
 ${INGREDIENT_RULES}

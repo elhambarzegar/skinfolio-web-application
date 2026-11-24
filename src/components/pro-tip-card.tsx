@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { buildShopLinks } from "@/lib/shopLinks";
+import { freqPhrase } from "@/lib/schedule";
+import { tipKind } from "@/lib/routine/tipKind";
 
 export type ProTipView = {
   id: string;
@@ -16,6 +18,8 @@ export type ProTipView = {
   // 30+ sunscreen") — never a specific product name. Present only for
   // ADD/CHANGE tips that describe something to shop for.
   shopQuery: string | null;
+  // The new frequency a CHANGE tip proposes, when it proposes one.
+  alternativeFrequency: number | null;
 };
 
 const ACTION_LABEL: Record<ProTipView["actionType"], string> = {
@@ -25,23 +29,30 @@ const ACTION_LABEL: Record<ProTipView["actionType"], string> = {
   KEEP: "Worth keeping",
 };
 
-const ACTION_STYLE: Record<ProTipView["actionType"], string> = {
-  ADD: "bg-ok/10 text-ok",
-  REMOVE: "bg-danger/10 text-danger",
-  CHANGE: "bg-warn/10 text-warn",
-  KEEP: "bg-chip text-ink-2",
+const ACTION_BADGE: Record<ProTipView["actionType"], string> = {
+  ADD: "b-new",
+  REMOVE: "b-out",
+  CHANGE: "b-new",
+  KEEP: "b-cat",
 };
 
 export function ProTipCard({
   tip,
+  onAddProduct,
   onResolved,
 }: {
   tip: ProTipView;
+  /** Opens the add-product flow for this tip's suggested gap. */
+  onAddProduct?: (tip: ProTipView) => void;
   onResolved?: (tip: ProTipView, status: "ACCEPTED" | "REJECTED") => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [localStatus, setLocalStatus] = useState(tip.status);
+  // What the person just chose, shown at once; otherwise what the server says.
+  const [justChose, setJustChose] = useState<"ACCEPTED" | "REJECTED" | null>(null);
+  const status = justChose ?? tip.status;
+
+  const kind = tipKind(tip, { alternativeFrequency: tip.alternativeFrequency, suggestedDescription: tip.shopQuery });
 
   async function respond(action: "accept" | "reject") {
     setBusy(true);
@@ -59,7 +70,7 @@ export function ProTipCard({
         return;
       }
       const newStatus = action === "accept" ? "ACCEPTED" : "REJECTED";
-      setLocalStatus(newStatus);
+      setJustChose(newStatus);
       onResolved?.(tip, newStatus);
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -67,22 +78,30 @@ export function ProTipCard({
     }
   }
 
+  const resolvedText =
+    status === "ACCEPTED"
+      ? kind === "shop"
+        ? "✓ Added to your routine"
+        : "✓ Done"
+      : kind === "shop"
+        ? "Skipped"
+        : kind === "advice"
+          ? "Dismissed"
+          : "Left as it was";
+
   return (
-    <div className="border border-line rounded-[8px] p-3 bg-bg-raise">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[13px] text-ink flex-1 leading-relaxed">{tip.summary}</p>
-        <span
-          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 ${ACTION_STYLE[tip.actionType]}`}
-        >
-          Pro Tip · {ACTION_LABEL[tip.actionType]}
-        </span>
+    <div className="step">
+      <div className="badges">
+        <span className={`badge ${ACTION_BADGE[tip.actionType]}`}>{ACTION_LABEL[tip.actionType]}</span>
       </div>
 
+      <p className="text-[20px] leading-snug">{tip.summary}</p>
+
       {tip.ruleLabel && (
-        <p className="mt-1.5 text-[11px] text-ink-3">
+        <p className="note">
           Source:{" "}
           {tip.ruleUrl ? (
-            <a href={tip.ruleUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+            <a href={tip.ruleUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
               {tip.ruleLabel}
             </a>
           ) : (
@@ -91,47 +110,56 @@ export function ProTipCard({
         </p>
       )}
 
-      {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
-
-      {tip.shopQuery && (
-        <div className="mt-2.5 flex gap-2">
-          {Object.entries(buildShopLinks(tip.shopQuery)).map(([site, url]) => (
-            <a
-              key={site}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[12px] font-semibold text-ink-2 border border-line px-3 py-1.5 rounded-[6px] hover:border-accent hover:text-ink capitalize"
-            >
-              Shop on {site}
-            </a>
-          ))}
+      {tip.shopQuery && (kind === "shop" || kind === "advice") && status === "PENDING" && (
+        <div className="flex flex-col gap-2">
+          <p className="eyebrow">Where to look</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(buildShopLinks(tip.shopQuery)).map(([site, url]) => (
+              <a key={site} href={url} target="_blank" rel="noopener noreferrer" className="btn btn-2 btn-sm">
+                Shop on <span className="capitalize">{site}</span>
+              </a>
+            ))}
+          </div>
         </div>
       )}
 
-      {localStatus === "PENDING" ? (
-        <div className="mt-2.5 flex gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => respond("accept")}
-            className="text-[12px] font-semibold bg-accent text-accent-ink px-3 py-1.5 rounded-[6px] disabled:opacity-50"
-          >
-            Accept
+      {error && (
+        <p role="alert" className="callout c-blush font-bold">
+          {error}
+        </p>
+      )}
+
+      {status !== "PENDING" ? (
+        <p className="text-[19px] font-bold">{resolvedText}</p>
+      ) : kind === "shop" ? (
+        <div className="flex flex-col gap-2">
+          <p className="note">Pick a product first. We&rsquo;ll check it against your routine before adding it.</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" disabled={busy} onClick={() => onAddProduct?.(tip)} className="btn flex-1">
+              I have one — add it
+            </button>
+            <button type="button" disabled={busy} onClick={() => respond("reject")} className="btn btn-2 flex-1">
+              Skip this suggestion
+            </button>
+          </div>
+        </div>
+      ) : kind === "advice" ? (
+        <button type="button" disabled={busy} onClick={() => respond("reject")} className="btn btn-2">
+          Dismiss
+        </button>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" disabled={busy} onClick={() => respond("accept")} className="btn flex-1">
+            {tip.actionType === "REMOVE"
+              ? "Remove it"
+              : tip.alternativeFrequency
+                ? `Change to ${freqPhrase(tip.alternativeFrequency)}`
+                : "Accept"}
           </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => respond("reject")}
-            className="text-[12px] font-semibold text-ink-2 border border-line px-3 py-1.5 rounded-[6px] disabled:opacity-50"
-          >
-            Reject
+          <button type="button" disabled={busy} onClick={() => respond("reject")} className="btn btn-2 flex-1">
+            {tip.actionType === "REMOVE" ? "Keep it" : "Keep as it is"}
           </button>
         </div>
-      ) : (
-        <p className="mt-2.5 text-[11px] text-ink-3">
-          {localStatus === "ACCEPTED" ? "Accepted" : "Rejected"}
-        </p>
       )}
     </div>
   );

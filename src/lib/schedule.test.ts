@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysLabel, isScheduledOn, nextScheduledWeekday, scheduledWeekdays } from "./schedule";
+import { daysLabel, freqPhrase, isScheduledOn, nextScheduledWeekday, scheduledWeekdays } from "./schedule";
 
 describe("scheduledWeekdays", () => {
   it("gives exactly N distinct days for N times a week", () => {
@@ -63,5 +63,12 @@ describe("daysLabel", () => {
   it("names the days otherwise", () => {
     expect(daysLabel(3)).toBe("Mon · Wed · Fri");
     expect(daysLabel(2)).toBe("Mon · Thu");
+  });
+});
+
+describe("freqPhrase", () => {
+  it("says 'Every day' for daily and lists the days otherwise", () => {
+    expect(freqPhrase(7)).toBe("Every day");
+    expect(freqPhrase(3)).toBe("Mon · Wed · Fri");
   });
 });

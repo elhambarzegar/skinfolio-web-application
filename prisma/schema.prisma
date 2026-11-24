@@ -88,6 +88,9 @@ model Product {
   size        String?
   description String?
   createdAt   DateTime @default(now())
+  // When we last tried to find this product's ingredients online, found or
+  // not. Lets a failed lookup be retried later (but not on every request).
+  lastLookupAt DateTime?
 
   sources          ProductSource[]
   currentSourceId  String?         @unique
