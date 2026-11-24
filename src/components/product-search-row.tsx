@@ -25,11 +25,7 @@ function useDebouncedFetch<T>(
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!enabled) {
-      setData(null);
-      setError(null);
-      return;
-    }
+    if (!enabled) return;
 
     debounceRef.current = setTimeout(async () => {
       abortRef.current?.abort();
@@ -54,7 +50,8 @@ function useDebouncedFetch<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return { data, loading, error };
+  // While a search is switched off (e.g. a product was just picked), show nothing.
+  return { data: enabled ? data : null, loading: enabled && loading, error: enabled ? error : null };
 }
 
 async function fetchJson(url: string, signal: AbortSignal) {
@@ -122,8 +119,8 @@ export function ProductSearchRow({
   const nameOptions = nameSearch.data?.products ?? [];
 
   return (
-    <div className="flex items-start gap-2">
-      <div className="flex-1 relative">
+    <div className="search-row">
+      <div className="relative flex-1">
         <input
           type="text"
           autoComplete="off"
@@ -136,19 +133,20 @@ export function ProductSearchRow({
           }}
           onFocus={() => brandQuery.trim().length >= 2 && setBrandOpen(true)}
           onBlur={() => setTimeout(() => setBrandOpen(false), 150)}
-          className="w-full border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent"
+          aria-label="Brand"
+          className="input"
         />
         {brandOpen && !productId && (
-          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-bg-raise border border-line rounded-[6px] shadow-lg max-h-64 overflow-y-auto">
-            {brandSearch.loading && <div className="px-3 py-2 text-[13px] text-ink-3">Searching…</div>}
+          <div className="suggest">
+            {brandSearch.loading && <div className="suggest-note">Searching…</div>}
             {!brandSearch.loading && brandSearch.error && (
-              <div className="px-3 py-2 text-[13px] text-danger">{brandSearch.error}</div>
+              <div className="suggest-note font-bold text-danger">{brandSearch.error}</div>
             )}
             {!brandSearch.loading &&
               !brandSearch.error &&
               brandOptions.length === 0 &&
               brandQuery.trim().length >= 2 && (
-                <div className="px-3 py-2 text-[13px] text-ink-3">
+                <div className="suggest-note">
                   No matching brand — keep typing to add it yourself.
                 </div>
               )}
@@ -160,7 +158,7 @@ export function ProductSearchRow({
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectBrand(b)}
-                  className="w-full text-left px-3 py-2 text-[14px] text-ink hover:bg-chip font-semibold"
+                  className="suggest-item font-bold"
                 >
                   {b}
                 </button>
@@ -169,7 +167,7 @@ export function ProductSearchRow({
         )}
       </div>
 
-      <div className="flex-[1.5] relative">
+      <div className="relative flex-[1.5]">
         <input
           type="text"
           autoComplete="off"
@@ -183,21 +181,22 @@ export function ProductSearchRow({
           }}
           onFocus={() => brandQuery.trim().length >= 1 && setNameOpen(true)}
           onBlur={() => setTimeout(() => setNameOpen(false), 150)}
-          className="w-full border border-line rounded-[6px] px-3 py-2 text-[14px] text-ink bg-bg-raise outline-none focus:border-accent disabled:opacity-50"
+          aria-label="Product name"
+          className="input disabled:opacity-50"
         />
         {productId && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-ok">
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[16px] font-bold text-ok">
             ✓ In catalog
           </span>
         )}
         {nameOpen && !productId && (
-          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-bg-raise border border-line rounded-[6px] shadow-lg max-h-64 overflow-y-auto">
-            {nameSearch.loading && <div className="px-3 py-2 text-[13px] text-ink-3">Searching…</div>}
+          <div className="suggest">
+            {nameSearch.loading && <div className="suggest-note">Searching…</div>}
             {!nameSearch.loading && nameSearch.error && (
-              <div className="px-3 py-2 text-[13px] text-danger">{nameSearch.error}</div>
+              <div className="suggest-note font-bold text-danger">{nameSearch.error}</div>
             )}
             {!nameSearch.loading && !nameSearch.error && nameOptions.length === 0 && (
-              <div className="px-3 py-2 text-[13px] text-ink-3">
+              <div className="suggest-note">
                 No matching product for this brand — keep typing to add it yourself.
               </div>
             )}
@@ -209,7 +208,7 @@ export function ProductSearchRow({
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectProduct(p)}
-                  className="w-full text-left px-3 py-2 text-[14px] text-ink hover:bg-chip"
+                  className="suggest-item"
                 >
                   {p.name}
                 </button>
@@ -223,7 +222,7 @@ export function ProductSearchRow({
           type="button"
           onClick={onRemove}
           aria-label="Remove product"
-          className="text-[13px] text-ink-3 hover:text-danger px-2 py-2"
+          className="link-btn text-danger"
         >
           Remove
         </button>

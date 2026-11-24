@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/auth";
+import { BRAND } from "@/lib/brand";
 import { OnboardingForm } from "./onboarding-form";
 
 export default async function OnboardingPage() {
@@ -11,15 +12,13 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
-      <header className="px-6 sm:px-10 py-5 border-b border-line">
-        <Link href="/" className="text-[15px] font-bold tracking-tight text-ink">
-          Skinfolio
+    <main className="flex flex-1 justify-center px-5 py-10">
+      <div className="w-full max-w-[560px]">
+        <Link href="/" className="eyebrow">
+          {BRAND.name}
         </Link>
-      </header>
-      <main className="flex-1 flex items-center justify-center px-6 py-16">
         <OnboardingForm />
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }

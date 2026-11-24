@@ -101,7 +101,7 @@ export function CheckInForm({
           onChange={(e) => setSymptomsText(e.target.value)}
           rows={5}
           placeholder="e.g. Feels fine. Or describe anything unusual: redness, itching, stinging."
-          className="w-full resize-none rounded-[16px] border-2 border-ink bg-paper px-4 py-3 text-[20px] text-ink outline-none"
+          className="w-full resize-none rounded-[16px] border-[1.5px] border-[#8F8697] bg-paper px-4 py-3 text-[20px] text-ink outline-none"
         />
       </label>
 

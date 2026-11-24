@@ -89,7 +89,7 @@ export function BuildRoutineButton({ label = "Build my routine" }: { label?: str
       <div className="flex flex-col gap-3" aria-live="polite">
         {LOADING_STEPS.slice(0, revealedCount).map((step) => (
           <div key={step} className="flex items-center gap-3 text-[19px]">
-            <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full border-2 border-ink bg-mint-deep text-[16px] font-bold">
+            <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full bg-mint-deep text-[16px] font-bold">
               ✓
             </span>
             {step}…

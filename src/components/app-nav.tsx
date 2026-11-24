@@ -89,7 +89,7 @@ export function AppNav() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 gap-1 border-t-[3px] border-ink bg-blush px-2 pt-2 pb-[max(10px,env(safe-area-inset-bottom))] md:sticky md:inset-x-auto md:bottom-auto md:top-0 md:flex md:h-dvh md:w-[280px] md:flex-none md:flex-col md:gap-2 md:border-r-[3px] md:border-t-0 md:p-4"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 gap-1 border-t-[1.5px] border-edge/50 bg-blush px-2 pt-2 pb-[max(10px,env(safe-area-inset-bottom))] md:sticky md:inset-x-auto md:bottom-auto md:top-0 md:flex md:h-dvh md:w-[280px] md:flex-none md:flex-col md:gap-2 md:border-r-[1.5px] md:border-t-0 md:p-4"
     >
       <p className="hidden px-3 pb-3 pt-2 font-heading text-[30px] font-bold leading-tight md:block">{BRAND.name}</p>
       {ITEMS.map((item) => {
@@ -100,7 +100,7 @@ export function AppNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={`flex min-h-[74px] flex-col items-center justify-center gap-1 rounded-[18px] border-2 text-[16px] font-bold md:min-h-[64px] md:flex-row md:justify-start md:gap-4 md:px-4 md:text-[21px] ${
-              active ? "border-ink bg-paper" : "border-transparent hover:bg-paper/60"
+              active ? "border-edge bg-paper" : "border-transparent hover:bg-paper/60"
             }`}
           >
             {item.icon}
