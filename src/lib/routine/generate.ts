@@ -10,6 +10,23 @@ const MODEL = "claude-opus-5";
 const RULE_NUMBERS = Object.keys(RULE_SOURCES).map(Number);
 const CATEGORIES = ["CLEANSE", "TREAT", "MOISTURIZE", "PROTECT"] as const;
 
+/**
+ * Plain-language reason a request to the routine agent failed. A rejected
+ * key or empty account is a problem on our side that retrying can't fix, so
+ * say that instead of "try again".
+ */
+export function agentErrorMessage(err: unknown): string {
+  const status = err instanceof Anthropic.APIError ? err.status : undefined;
+  const text = err instanceof Error ? err.message : "";
+  if (status === 401 || status === 403) {
+    return "The routine agent can't run right now because its access key isn't working. That's a problem on our side, not yours. Retrying won't help until it's fixed.";
+  }
+  if (status === 400 && /credit balance/i.test(text)) {
+    return "The routine agent is out of credit right now. That's a problem on our side, not yours. Retrying won't help until it's topped up.";
+  }
+  return "Couldn't reach the routine agent. Try again in a moment.";
+}
+
 const StepOutput = z.object({
   // A real owned product's id for KEEP/REMOVE/CHANGE. For "ADD", any
   // short token you choose (e.g. "new-sunscreen") — used only to match
@@ -203,7 +220,7 @@ ${ownedRows.map(formatRow).join("\n")}${previousRoutineBlock}`;
     parsed = response.parsed_output;
   } catch (err) {
     console.error("[routine] generation request failed:", err);
-    return { ok: false, reason: "agent_error", message: "Couldn't reach the routine agent. Try again in a moment." };
+    return { ok: false, reason: "agent_error", message: agentErrorMessage(err) };
   }
 
   if (!parsed) {

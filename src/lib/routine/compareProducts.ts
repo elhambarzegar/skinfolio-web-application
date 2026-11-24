@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { INGREDIENT_RULES, RULE_SOURCES } from "./policy";
+import { agentErrorMessage } from "./generate";
 
 const MODEL = "claude-opus-5";
 const RULE_NUMBERS = Object.keys(RULE_SOURCES).map(Number);
@@ -99,7 +100,7 @@ ${candidateBlock}`;
     parsed = response.parsed_output;
   } catch (err) {
     console.error("[compareProducts] request failed:", err);
-    return { ok: false, reason: "agent_error", message: "Couldn't reach the comparison agent. Try again in a moment." };
+    return { ok: false, reason: "agent_error", message: agentErrorMessage(err) };
   }
 
   if (!parsed) {
