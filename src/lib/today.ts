@@ -24,6 +24,14 @@ export type NotTodayStep = {
   days: string | null;
 };
 
+/** A step whose product has run out: paused, not counted as missed. */
+export type RanOutStep = {
+  id: string;
+  period: "AM" | "PM";
+  name: string;
+  brand: string;
+};
+
 export type TodayData = {
   state: "no_intake" | "no_routine" | "paused" | "active";
   firstName: string | null;
@@ -35,6 +43,7 @@ export type TodayData = {
   pausedReason: string | null;
   steps: TodayStep[];
   notToday: NotTodayStep[];
+  ranOut: RanOutStep[];
   pendingTipCount: number;
 };
 
@@ -58,6 +67,7 @@ export async function loadToday(userId: string): Promise<TodayData> {
     pausedReason: null,
     steps: [],
     notToday: [],
+    ranOut: [],
     pendingTipCount: 0,
   };
 
@@ -101,7 +111,19 @@ export async function loadToday(userId: string): Promise<TodayData> {
     return { ...empty, state: "paused", routineId: routine.id, pausedReason: flag?.reason ?? null, pendingTipCount };
   }
 
-  const withProduct = routine.steps.flatMap((s) => (s.product ? [{ step: s, product: s.product }] : []));
+  // A product that has run out pauses its step: nothing to tick, and it
+  // isn't logged as due, so it can't show up later as a missed day.
+  const ranOutItems = await prisma.shelfItem.findMany({
+    where: { userId, status: "RAN_OUT", productId: { in: routine.steps.flatMap((s) => (s.productId ? [s.productId] : [])) } },
+    select: { productId: true },
+  });
+  const ranOutIds = new Set(ranOutItems.map((i) => i.productId));
+
+  const allWithProduct = routine.steps.flatMap((s) => (s.product ? [{ step: s, product: s.product }] : []));
+  const withProduct = allWithProduct.filter(({ product }) => !ranOutIds.has(product.id));
+  const ranOut: RanOutStep[] = allWithProduct
+    .filter(({ product }) => ranOutIds.has(product.id))
+    .map(({ step, product }) => ({ id: step.id, period: step.timeOfDay, name: product.name, brand: product.brand }));
   const due = withProduct.filter(({ step }) => isScheduledOn(step.frequencyPerWeek, now.weekday));
 
   if (due.length > 0) {
@@ -141,5 +163,5 @@ export async function loadToday(userId: string): Promise<TodayData> {
       days: daysLabel(step.frequencyPerWeek),
     }));
 
-  return { ...empty, state: "active", routineId: routine.id, steps, notToday, pendingTipCount };
+  return { ...empty, state: "active", routineId: routine.id, steps, notToday, ranOut, pendingTipCount };
 }

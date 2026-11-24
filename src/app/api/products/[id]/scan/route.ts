@@ -13,9 +13,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const { id } = await params;
-  const product = await prisma.product.findUnique({ where: { id } });
-  if (!product) {
-    return NextResponse.json({ error: "Product not found." }, { status: 404 });
+  // A photo is of the person's own bottle, so it belongs to their shelf.
+  const item = await prisma.shelfItem.findUnique({
+    where: { userId_productId: { userId: session.user.id, productId: id } },
+  });
+  if (!item) {
+    return NextResponse.json({ error: "That product isn't on your shelf." }, { status: 404 });
   }
 
   const body = await req.json().catch(() => null);
@@ -48,7 +51,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   await prisma.$transaction(async (tx) => {
     const newSource = await tx.productSource.create({
       data: {
-        productId: product.id,
+        productId: id,
         origin: "USER_PHOTO",
         sourceUrl: null,
         ingredientsInci: result.ingredientsInci,
@@ -61,17 +64,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
     });
 
-    if (product.currentSourceId) {
+    // The new photo replaces the person's earlier one; the old one is kept as history.
+    if (item.photoSourceId) {
+      await tx.shelfItem.update({ where: { id: item.id }, data: { photoSourceId: null } });
       await tx.productSource.update({
-        where: { id: product.currentSourceId },
+        where: { id: item.photoSourceId },
         data: { status: "SUPERSEDED", supersededById: newSource.id },
       });
     }
-
-    await tx.product.update({
-      where: { id: product.id },
-      data: { currentSourceId: newSource.id },
-    });
+    await tx.shelfItem.update({ where: { id: item.id }, data: { photoSourceId: newSource.id } });
   });
 
   return NextResponse.json({

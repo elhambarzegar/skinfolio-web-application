@@ -111,6 +111,25 @@ export default async function TodayPage() {
         </div>
       )}
 
+      {data.ranOut.length > 0 && (
+        <div className="callout c-blush">
+          <h2>
+            {data.ranOut.length} step{data.ranOut.length === 1 ? " is" : "s are"} paused: you ran out
+          </h2>
+          <ul className="flex flex-col gap-1 text-[19px]">
+            {data.ranOut.map((s) => (
+              <li key={s.id}>
+                <b>{s.name}</b>
+                <span className="note"> · {s.brand} · {s.period === "AM" ? "Morning" : "Evening"}</span>
+              </li>
+            ))}
+          </ul>
+          <Link href="/shelf" className="btn btn-2">
+            Go to my shelf
+          </Link>
+        </div>
+      )}
+
       {data.notToday.length > 0 && (
         <details className="acc">
           <summary>Not on today&rsquo;s list ({data.notToday.length})</summary>

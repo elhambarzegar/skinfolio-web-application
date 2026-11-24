@@ -28,6 +28,7 @@ model User {
   timezone     String   @default("UTC")
 
   intakeResponses IntakeResponse[]
+  shelfItems      ShelfItem[]
   routines        Routine[]
   checkIns        CheckIn[]
   stepLogs        StepLog[]
@@ -98,6 +99,7 @@ model Product {
 
   intakeAppearances IntakeResponse[] @relation("IntakeOwnedProducts")
   routineSteps      RoutineStep[]
+  shelfItems        ShelfItem[]
 }
 
 enum SourceOrigin {
@@ -142,6 +144,9 @@ model ProductSource {
   supersededBy          ProductSource? @relation("SourceHistory", fields: [supersededById], references: [id])
   supersedes            ProductSource? @relation("SourceHistory")
   currentForProduct     Product?      @relation("CurrentSource")
+  // Set when this is one person's own photo of the label: it belongs to their
+  // shelf item, never to the shared library.
+  photoForShelfItem     ShelfItem?    @relation("ShelfPhotoSource")
 }
 
 // --- Routines ---------------------------------------------------------------
@@ -321,4 +326,30 @@ model EscalationFlag {
   resolved   Boolean   @default(false)
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
+}
+
+enum ShelfStatus {
+  ACTIVE
+  RAN_OUT
+}
+
+/// One product on one person's shelf. Whether it is in their routine is not
+/// stored here: that is whatever their current routine says.
+model ShelfItem {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product     @relation(fields: [productId], references: [id])
+  status    ShelfStatus @default(ACTIVE)
+  ranOutAt  DateTime?
+  addedAt   DateTime    @default(now())
+
+  // The person's own photo of this product's label. When set it is used
+  // instead of the app library's ingredient list, for this person only.
+  photoSourceId String?        @unique
+  photoSource   ProductSource? @relation("ShelfPhotoSource", fields: [photoSourceId], references: [id])
+
+  @@unique([userId, productId])
+  @@index([userId, status])
 }

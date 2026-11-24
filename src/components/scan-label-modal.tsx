@@ -98,10 +98,13 @@ export function ScanLabelModal({
   }, []);
 
   useEffect(() => {
-    startCamera();
-    return () => stopCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Started a moment later so the camera's own status updates never run inside this effect.
+    const id = setTimeout(startCamera, 0);
+    return () => {
+      clearTimeout(id);
+      stopCamera();
+    };
+  }, [startCamera, stopCamera]);
 
   function drawToCanvas(source: CanvasImageSource, width: number, height: number): string | null {
     const canvas = canvasRef.current;
@@ -179,88 +182,69 @@ export function ScanLabelModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-      onClick={handleClose}
-    >
+    <div className="modal-scrim" onClick={handleClose}>
       <div
-        className="bg-bg-raise border border-line rounded-[12px] max-w-md w-full p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scan-title"
+        className="modal-card"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-[16px] font-bold text-ink">Scan ingredient label</h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Close"
-            className="text-ink-3 hover:text-ink text-[20px] leading-none px-1"
-          >
+        <div className="modal-head">
+          <h2 id="scan-title">Photo of the ingredient label</h2>
+          <button type="button" onClick={handleClose} aria-label="Close" className="modal-x">
             ×
           </button>
         </div>
-        <p className="text-[13px] text-ink-2 mb-3">{productLabel}</p>
+        <p className="sub">{productLabel}</p>
+        <p className="note">
+          This photo is for your own bottle. It is used for your routine only, and it doesn&rsquo;t change what anyone else sees.
+        </p>
 
         <canvas ref={canvasRef} className="hidden" />
 
         {!capturedImage ? (
           <>
             {cameraError ? (
-              <div className="text-[13px] text-ink-2 border border-line rounded-[8px] p-5 text-center">
-                {cameraError}
-                <label className="mt-3 block text-[13px] font-semibold text-accent cursor-pointer">
+              <div className="callout c-sun items-center text-center">
+                <p className="text-[19px]">{cameraError}</p>
+                <label className="btn cursor-pointer">
                   Upload a photo instead
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} />
                 </label>
               </div>
             ) : (
               <>
-                <div className="relative rounded-[8px] overflow-hidden bg-black aspect-[3/4]">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+                <div className="relative aspect-[3/4] overflow-hidden rounded-[22px] bg-black">
+                  <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
                 </div>
-                <button
-                  type="button"
-                  onClick={capture}
-                  className="mt-4 w-full text-[15px] font-bold bg-accent text-accent-ink px-6 py-2.5 rounded-[6px] hover:opacity-90"
-                >
+                <button type="button" onClick={capture} className="btn btn-block">
                   Take photo
                 </button>
+                <label className="link-btn flex cursor-pointer items-center justify-center">
+                  Or upload a photo
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                </label>
               </>
             )}
           </>
         ) : (
           <>
-            <div className="rounded-[8px] overflow-hidden bg-black">
+            <div className="overflow-hidden rounded-[22px] bg-black">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={capturedImage} alt="Captured ingredient label" className="w-full h-auto" />
+              <img src={capturedImage} alt="Captured ingredient label" className="h-auto w-full" />
             </div>
             {error && (
-              <p className="mt-3 text-[13px] text-danger border border-danger/40 bg-danger/10 rounded-[6px] px-3 py-2">
+              <p role="alert" className="callout c-blush font-bold">
                 {error}
               </p>
             )}
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={retake}
-                disabled={submitting}
-                className="flex-1 text-[14px] font-semibold text-ink-2 border border-line rounded-[6px] py-2.5 disabled:opacity-50"
-              >
-                Retake
-              </button>
-              <button
-                type="button"
-                onClick={submitPhoto}
-                disabled={submitting}
-                className="flex-1 text-[15px] font-bold bg-accent text-accent-ink rounded-[6px] py-2.5 hover:opacity-90 disabled:opacity-50"
-              >
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={submitPhoto} disabled={submitting} className="btn btn-ok btn-block">
                 {submitting ? "Reading label…" : "Use this photo"}
+              </button>
+              <button type="button" onClick={retake} disabled={submitting} className="btn btn-2 btn-block">
+                Retake
               </button>
             </div>
           </>

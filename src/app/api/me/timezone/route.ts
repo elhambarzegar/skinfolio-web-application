@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ changed: false });
   }
 
-  await prisma.user.update({ where: { id: session.user.id }, data: { timezone } });
+  // updateMany: a login left over from a deleted account matches nothing instead of crashing.
+  await prisma.user.updateMany({ where: { id: session.user.id }, data: { timezone } });
   return NextResponse.json({ changed: true });
 }

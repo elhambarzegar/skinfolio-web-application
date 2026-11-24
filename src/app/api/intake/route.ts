@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveProductSource } from "@/lib/productLookup";
 import { resolveOwnedProducts, type OwnedProductInput } from "@/lib/productLookup/resolveOwnedProducts";
+import { addToShelf } from "@/lib/shelf";
 import { EXPERIENCE_OPTIONS, PRIORITY_OPTIONS, COMPLEXITY_OPTIONS } from "@/lib/intakeProfile";
 
 const EXPERIENCE_LEVELS = EXPERIENCE_OPTIONS.map((o) => o.value);
@@ -66,6 +67,8 @@ export async function POST(req: Request) {
     const resolved = await resolveOwnedProducts(tx, ownedProducts);
     const productIds = resolved.productIds;
     newProductIds = resolved.newProductIds;
+
+    await addToShelf(tx, session.user.id, productIds);
 
     return tx.intakeResponse.create({
       data: {

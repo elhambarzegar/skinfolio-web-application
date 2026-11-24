@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { pickSource } from "@/lib/shelf";
 import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
 import { INGREDIENT_RULES, INTAKE_SAFETY_TRIGGERS, RULE_SOURCES } from "./policy";
 
@@ -138,12 +139,19 @@ export async function generateRoutine(userId: string): Promise<RoutineGeneration
   const intake = await prisma.intakeResponse.findFirst({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    include: { ownedProducts: { include: { currentSource: true } } },
   });
 
   if (!intake) return { ok: false, reason: "no_intake" };
 
-  if (intake.ownedProducts.length === 0) {
+  // What is on the shelf and still in use. A product they've run out of
+  // can't be part of a new routine.
+  const shelf = await prisma.shelfItem.findMany({
+    where: { userId, status: "ACTIVE" },
+    orderBy: { addedAt: "asc" },
+    include: { product: { include: { currentSource: true } }, photoSource: true },
+  });
+
+  if (shelf.length === 0) {
     const routine = await prisma.$transaction(async (tx) => {
       await tx.routine.updateMany({ where: { userId, status: "DRAFT" }, data: { status: "ARCHIVED" } });
       return tx.routine.create({
@@ -151,19 +159,19 @@ export async function generateRoutine(userId: string): Promise<RoutineGeneration
           userId,
           status: "DRAFT",
           rationale:
-            "You haven't listed any products yet, so there's nothing to build a routine from. Add what you use in the intake form.",
+            "There's nothing on your shelf that you're still using, so there's nothing to build a routine from. Add what you use on your shelf.",
         },
       });
     });
     return { ok: true, routineId: routine.id };
   }
 
-  const ownedRows: OwnedProductRow[] = intake.ownedProducts.map((p) => ({
+  const ownedRows: OwnedProductRow[] = shelf.map(({ product: p, photoSource }) => ({
     id: p.id,
     brand: p.brand,
     name: p.name,
     step: p.step,
-    ingredientNote: buildIngredientNote(p.currentSource),
+    ingredientNote: buildIngredientNote(pickSource(p.currentSource, photoSource).source),
   }));
 
   const ownedIds = new Set(ownedRows.map((p) => p.id));

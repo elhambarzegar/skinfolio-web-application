@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { productViewsFor } from "@/lib/shelf";
 import { INGREDIENT_RULES, RULE_SOURCES, stripRuleNumbers } from "./policy";
 import { agentErrorMessage } from "./generate";
 
@@ -127,6 +128,13 @@ export async function compareProductsToRoutine(
     include: { currentSource: true },
   });
 
+  // Each person's own label photo, where they took one, beats the shared library.
+  const views = await productViewsFor(userId, [
+    ...routine.steps.flatMap((s) => (s.productId ? [s.productId] : [])),
+    ...productIds,
+  ]);
+  const sourceOf = (productId: string) => views.get(productId)?.source ?? null;
+
   const ingredientNote = (source: { confidenceScore: number; ingredientsInci: string } | null) => {
     if (!source) return "[no ingredient data available]";
     if (confidenceBucket(source.confidenceScore) === "low") return `[low-confidence ingredient data] ${source.ingredientsInci}`;
@@ -144,14 +152,14 @@ export async function compareProductsToRoutine(
     .flatMap((period) =>
       stepsByPeriod[period].map((s, i) =>
         s.product
-          ? `- ${period} step ${i + 1}: ${s.product.brand} — ${s.product.name} (${s.product.step}, ${s.frequencyPerWeek}x/week): ${ingredientNote(s.product.currentSource)}`
+          ? `- ${period} step ${i + 1}: ${s.product.brand} — ${s.product.name} (${s.product.step}, ${s.frequencyPerWeek}x/week${views.get(s.product.id)?.shelfStatus === "RAN_OUT" ? ", RAN OUT: paused until restocked" : ""}): ${ingredientNote(sourceOf(s.product.id))}`
           : `- ${period} step ${i + 1}: [unfilled gap — suggested: ${s.suggestedDescription ?? "unspecified"}]`
       )
     )
     .join("\n");
 
   const candidateBlock = candidates
-    .map((c) => `- id: ${c.id} | ${c.brand} — ${c.name} | ingredients: ${ingredientNote(c.currentSource)}`)
+    .map((c) => `- id: ${c.id} | ${c.brand} — ${c.name} | ingredients: ${ingredientNote(sourceOf(c.id))}`)
     .join("\n");
 
   const fillStep = options.fillStepId ? routine.steps.find((s) => s.id === options.fillStepId) : null;
@@ -236,7 +244,7 @@ ${candidateBlock}${fillNote}`;
         ruleLabel: rule ? rule.label : null,
         ruleUrl: rule?.url ?? null,
         category: p.category,
-        ingredients: ingredientStatus(c.currentSource),
+        ingredients: ingredientStatus(sourceOf(c.id)),
         placements,
         fillsStepId: gap?.id ?? null,
       };

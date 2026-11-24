@@ -24,6 +24,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ stepId:
     return NextResponse.json({ error: "Your routine is paused, so steps can't be ticked off right now." }, { status: 409 });
   }
 
+  if (step.productId) {
+    const ranOut = await prisma.shelfItem.findFirst({
+      where: { userId: session.user.id, productId: step.productId, status: "RAN_OUT" },
+      select: { id: true },
+    });
+    if (ranOut) {
+      return NextResponse.json({ error: "You've run out of this product, so the step is paused." }, { status: 409 });
+    }
+  }
+
   const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { timezone: true } });
   const { date } = localNow(safeTimezone(user?.timezone) ?? "UTC");
   const doneAt = body.done ? new Date() : null;

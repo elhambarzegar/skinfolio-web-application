@@ -17,6 +17,8 @@ export type RoutineStepView = {
   // Null only for an "ADD" proposal — a described gap, nothing owned yet.
   product: { id: string; brand: string; name: string; step: string } | null;
   confidence: { bucket: "high" | "medium" | "low"; score: number; origin: string; fetchedAt: string } | null;
+  /** The product is on the shelf but marked as run out, so the step is paused. */
+  ranOut: boolean;
   frequencyPerWeek: number;
   timeCostMinutes: number | null;
   ownership: "OWNED" | "NEW";
@@ -237,6 +239,7 @@ export function RoutineReview({
                       {category && <span className="badge b-cat">{CATEGORY_LABEL[category] ?? category}</span>}
                       <span className="badge b-freq">{freqPhrase(step.frequencyPerWeek)}</span>
                       {step.timeCostMinutes != null && <span className="badge b-time">~{step.timeCostMinutes} min</span>}
+                      {step.ranOut && <span className="badge b-out">Ran out · paused</span>}
                       {proposal && <span className={`badge ${proposal.cls}`}>{proposal.text}</span>}
                       {confidence && <span className={`badge ${confidence.cls}`}>{confidence.text}</span>}
                     </div>

@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { productViewsFor } from "@/lib/shelf";
 import { RULE_SOURCES, stripRuleNumbers } from "@/lib/routine/policy";
 import { RoutineReview, type RoutineStepView } from "./routine-review";
 import type { ProTipView } from "@/components/pro-tip-card";
@@ -40,8 +41,14 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
     notFound();
   }
 
+  const views = await productViewsFor(
+    session.user.id,
+    routine.steps.flatMap((s) => (s.productId ? [s.productId] : []))
+  );
+
   const steps: RoutineStepView[] = routine.steps.map((step) => {
-    const source = step.product?.currentSource ?? null;
+    const view = step.product ? views.get(step.product.id) : undefined;
+    const source = view?.source ?? null;
     const bucket = source ? confidenceBucket(source.confidenceScore) : null;
     const rule = resolveRule(step.ruleCitation);
     return {
@@ -54,6 +61,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
       confidence: bucket
         ? { bucket, score: source!.confidenceScore, origin: source!.origin, fetchedAt: source!.fetchedAt.toISOString() }
         : null,
+      ranOut: view?.shelfStatus === "RAN_OUT",
       frequencyPerWeek: step.frequencyPerWeek,
       timeCostMinutes: step.timeCostMinutes,
       ownership: step.ownership,

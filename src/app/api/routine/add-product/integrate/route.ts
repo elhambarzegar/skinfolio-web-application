@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { addToShelf, productViewsFor } from "@/lib/shelf";
 import { RULE_SOURCES, stripRuleNumbers } from "@/lib/routine/policy";
 import type { Prisma, ProductStep, TimeOfDay } from "@prisma/client";
 
@@ -98,11 +99,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No products to add." }, { status: 400 });
   }
 
-  const intake = await prisma.intakeResponse.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
-  if (!intake) {
-    return NextResponse.json({ error: "Complete your intake first." }, { status: 400 });
-  }
-
   const routineId = typeof body?.routineId === "string" ? body.routineId : undefined;
   const fillStepId = typeof body?.fillStepId === "string" ? body.fillStepId : undefined;
 
@@ -116,11 +112,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Build a routine first before adding products to it." }, { status: 400 });
   }
 
-  const products = await prisma.product.findMany({
-    where: { id: { in: items.map((i) => i.productId) } },
-    include: { currentSource: true },
-  });
+  const products = await prisma.product.findMany({ where: { id: { in: items.map((i) => i.productId) } } });
   const productById = new Map(products.map((p) => [p.id, p]));
+  const views = await productViewsFor(userId, products.map((p) => p.id));
 
   // Which suggested gaps get filled, and by which product: either the one the
   // person picked a product for (from a Pro Tip), or one the fit check found
@@ -146,17 +140,15 @@ export async function POST(req: Request) {
 
   await prisma.$transaction(async (tx) => {
     // The shelf: whatever the person adds is now something they own.
-    await tx.intakeResponse.update({
-      where: { id: intake.id },
-      data: { ownedProducts: { connect: products.map((p) => ({ id: p.id })) } },
-    });
+    await addToShelf(tx, userId, products.map((p) => p.id));
 
     for (const item of items) {
       const product = productById.get(item.productId);
       if (!product) continue;
 
       // The person saw the warning and chose to add it: that is their decision on record.
-      const lowConfidence = !product.currentSource || confidenceBucket(product.currentSource.confidenceScore) === "low";
+      const source = views.get(product.id)?.source ?? null;
+      const lowConfidence = !source || confidenceBucket(source.confidenceScore) === "low";
       const decision = lowConfidence ? { ackLowConfidence: true, decidedAt: new Date() } : {};
 
       if (product.step === "OTHER" && item.category !== "OTHER") {
