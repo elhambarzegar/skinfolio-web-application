@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TypedSteps } from "@/components/typed-steps";
 
 const LOADING_STEPS = [
   "Reading your products",
@@ -11,41 +12,24 @@ const LOADING_STEPS = [
   "Building a routine that fits your goal",
 ];
 
-const STEP_INTERVAL_MS = 1800;
-
 export function BuildRoutineButton({ label = "Build my routine" }: { label?: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [revealedCount, setRevealedCount] = useState(0);
   const [refusal, setRefusal] = useState<{
     severity: "red_flag" | "emergency";
     concern: string;
     routing: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
 
   async function handleClick() {
     setLoading(true);
-    setRevealedCount(1);
     setError(null);
     setRefusal(null);
-
-    intervalRef.current = setInterval(() => {
-      setRevealedCount((c) => Math.min(c + 1, LOADING_STEPS.length));
-    }, STEP_INTERVAL_MS);
 
     try {
       const res = await fetch("/api/routine", { method: "POST" });
       const data = await res.json();
-
-      if (intervalRef.current) clearInterval(intervalRef.current);
 
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
@@ -59,11 +43,9 @@ export function BuildRoutineButton({ label = "Build my routine" }: { label?: str
         return;
       }
 
-      setRevealedCount(LOADING_STEPS.length);
       router.push(`/routine/${data.id}`);
       router.refresh();
     } catch {
-      if (intervalRef.current) clearInterval(intervalRef.current);
       setError("Couldn't reach the server. Check your connection and try again.");
       setLoading(false);
     }
@@ -85,18 +67,7 @@ export function BuildRoutineButton({ label = "Build my routine" }: { label?: str
   }
 
   if (loading) {
-    return (
-      <div className="flex flex-col gap-3" aria-live="polite">
-        {LOADING_STEPS.slice(0, revealedCount).map((step) => (
-          <div key={step} className="flex items-center gap-3 text-[19px]">
-            <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-full bg-mint-deep text-[16px] font-bold">
-              ✓
-            </span>
-            {step}…
-          </div>
-        ))}
-      </div>
-    );
+    return <TypedSteps lines={LOADING_STEPS} label="Building your routine. This can take a minute or two." />;
   }
 
   return (
