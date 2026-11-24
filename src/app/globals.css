@@ -87,8 +87,8 @@
   --font-heading: var(--font-head);
 }
 
-/* Typed-in letters (progress lines): each fades up as it appears. */
-@keyframes tfade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+/* Typed-in letters (progress lines): each fades in right where it sits, no movement. */
+@keyframes tfade { from { opacity: 0; } to { opacity: 1; } }
 .tchar { display: inline-block; white-space: pre; animation: tfade .35s ease-out both; }
 
 * { box-sizing: border-box; }

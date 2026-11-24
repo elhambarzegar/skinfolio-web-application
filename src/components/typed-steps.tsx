@@ -22,7 +22,16 @@ function typedWords(typed: string): { start: number; word: string; space: string
  * typed and erased three times before the line is ticked and the next begins.
  * The last line keeps going until this component is removed.
  */
-export function TypedSteps({ lines, label }: { lines: readonly string[]; label: string }) {
+export function TypedSteps({
+  lines,
+  label,
+  patienceNote = "Still working. A careful routine can take a minute or two.",
+}: {
+  lines: readonly string[];
+  label: string;
+  /** Shown after a long wait on the last line; pass null for none. */
+  patienceNote?: string | null;
+}) {
   const [clock, setClock] = useState({ elapsed: 0, reduced: false });
 
   useEffect(() => {
@@ -112,8 +121,8 @@ export function TypedSteps({ lines, label }: { lines: readonly string[]; label: 
           );
         })}
 
-        {waitingMs > PATIENCE_NOTE_AFTER_MS && (
-          <p className="sub tchar ml-[42px]">Still working. A careful routine can take a minute or two.</p>
+        {patienceNote && waitingMs > PATIENCE_NOTE_AFTER_MS && (
+          <p className="sub tchar ml-[42px]">{patienceNote}</p>
         )}
       </div>
     </div>

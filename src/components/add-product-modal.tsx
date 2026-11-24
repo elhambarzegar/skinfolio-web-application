@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProductSearchRow, type OwnedProductEntry } from "@/components/product-search-row";
+import { TypedSteps } from "@/components/typed-steps";
 
 type Row = OwnedProductEntry & { rowId: number };
 
@@ -15,7 +16,6 @@ const ANALYZE_STEPS = [
   "Comparing with your routine",
   "Checking for conflicts",
 ];
-const ANALYZE_STEP_INTERVAL_MS = 4000;
 
 type CompatibilityResult = {
   productId: string;
@@ -41,21 +41,13 @@ const CONCERN_LABEL: Record<CompatibilityResult["concern"], string> = {
 
 export function AddProductModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
-  const nextRowId = useRef(0);
-  const [rows, setRows] = useState<Row[]>([{ rowId: nextRowId.current++, brand: "", name: "", productId: null }]);
+  const nextRowId = useRef(1);
+  const [rows, setRows] = useState<Row[]>([{ rowId: 0, brand: "", name: "", productId: null }]);
   const [phase, setPhase] = useState<"input" | "results">("input");
   const [analyzing, setAnalyzing] = useState(false);
   const [integrating, setIntegrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CompatibilityResult[]>([]);
-  const [revealedCount, setRevealedCount] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
 
   function updateRow(rowId: number, entry: OwnedProductEntry) {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...entry, rowId } : r)));
@@ -78,10 +70,6 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
     }
 
     setAnalyzing(true);
-    setRevealedCount(1);
-    intervalRef.current = setInterval(() => {
-      setRevealedCount((c) => Math.min(c + 1, ANALYZE_STEPS.length));
-    }, ANALYZE_STEP_INTERVAL_MS);
 
     try {
       const res = await fetch("/api/routine/add-product/analyze", {
@@ -92,7 +80,6 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
         }),
       });
       const data = await res.json();
-      if (intervalRef.current) clearInterval(intervalRef.current);
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
         setAnalyzing(false);
@@ -102,7 +89,6 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
       setPhase("results");
       setAnalyzing(false);
     } catch {
-      if (intervalRef.current) clearInterval(intervalRef.current);
       setError("Couldn't reach the server. Check your connection and try again.");
       setAnalyzing(false);
     }
@@ -183,14 +169,13 @@ export function AddProductModal({ onClose }: { onClose: () => void }) {
             )}
 
             {analyzing ? (
-              <div className="mt-5 flex flex-col gap-1.5">
-                {ANALYZE_STEPS.slice(0, revealedCount).map((step) => (
-                  <div key={step} className="text-[13px] flex items-center gap-2 text-ink-2">
-                    <span className="text-ok">✓</span>
-                    {step}…
-                  </div>
-                ))}
-                <p className="mt-1 text-[12px] text-ink-3">
+              <div className="mt-5 flex flex-col gap-4">
+                <TypedSteps
+                  lines={ANALYZE_STEPS}
+                  label="Checking how this product fits your routine. A new product can take a couple of minutes."
+                  patienceNote={null}
+                />
+                <p className="note">
                   A brand-new product can take a couple of minutes the first time — we&rsquo;re looking it up for real.
                 </p>
               </div>
