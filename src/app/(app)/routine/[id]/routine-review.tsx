@@ -7,6 +7,8 @@ import { freqPhrase } from "@/lib/schedule";
 import { ProTipsList } from "@/components/pro-tips-list";
 import type { ProTipView } from "@/components/pro-tip-card";
 import { AddProductModal } from "@/components/add-product-modal";
+import { PendingChanges } from "@/components/pending-changes";
+import type { ChangeView } from "@/lib/routine/changes";
 
 export type RoutineStepView = {
   id: string;
@@ -68,6 +70,7 @@ function needsDecision(step: RoutineStepView): boolean {
 }
 
 export function RoutineReview({
+  pending,
   routineId,
   status,
   rationale,
@@ -75,6 +78,7 @@ export function RoutineReview({
   steps,
   proTips,
 }: {
+  pending: ChangeView[];
   routineId: string;
   status: string;
   rationale: string;
@@ -149,6 +153,8 @@ export function RoutineReview({
         <p className="eyebrow">{STATUS_LABEL[status] ?? status}</p>
         <h1 className="page-title">Your routine</h1>
       </div>
+
+      <PendingChanges changes={pending} />
 
       {status === "DRAFT" && (
         <div className="callout c-sun">

@@ -5,6 +5,7 @@ import { CATEGORY_LABEL } from "@/lib/productCategory";
 import { pickSource } from "@/lib/shelf";
 import { freqPhrase } from "@/lib/schedule";
 import { AddProductButton } from "@/components/add-product-button";
+import { PrescribedButton } from "@/components/prescribed-button";
 import { ShelfList, type ShelfProduct } from "@/components/shelf-list";
 
 export default async function ShelfPage() {
@@ -63,6 +64,7 @@ export default async function ShelfPage() {
       category: item.product.step,
       categoryLabel: CATEGORY_LABEL[item.product.step] ?? "Other",
       ranOut: item.status === "RAN_OUT",
+      prescribed: item.prescribed,
       uses,
       ingredients: source
         ? {
@@ -87,9 +89,14 @@ export default async function ShelfPage() {
         </p>
       </div>
 
-      <ShelfList products={products} />
+      <ShelfList products={products} hasRoutine={!!routine} />
 
-      {routine && <AddProductButton />}
+      {routine && (
+        <div className="flex flex-col gap-3">
+          <AddProductButton />
+          <PrescribedButton />
+        </div>
+      )}
     </div>
   );
 }

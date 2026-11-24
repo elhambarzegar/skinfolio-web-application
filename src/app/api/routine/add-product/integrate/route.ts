@@ -4,9 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { addToShelf, productViewsFor } from "@/lib/shelf";
 import { RULE_SOURCES, stripRuleNumbers } from "@/lib/routine/policy";
-import type { Prisma, ProductStep, TimeOfDay } from "@prisma/client";
-
-type Tx = Prisma.TransactionClient;
+import { insertStep } from "@/lib/routine/steps";
+import type { ProductStep, TimeOfDay } from "@prisma/client";
 
 const CATEGORIES: ProductStep[] = ["CLEANSE", "TREAT", "MOISTURIZE", "PROTECT", "OTHER"];
 
@@ -54,31 +53,6 @@ function parseItem(raw: unknown): Item | null {
     fillsStepId: typeof r.fillsStepId === "string" ? r.fillsStepId : null,
     placements,
   };
-}
-
-/**
- * Puts a product into a period of the routine at the given position. The
- * period's steps are renumbered 1, 2, 3… afterwards, so there are never gaps
- * or two steps with the same number.
- */
-async function insertStep(
-  tx: Tx,
-  routineId: string,
-  data: Omit<Prisma.RoutineStepUncheckedCreateInput, "routineId" | "order">,
-  position: number
-) {
-  const existing = await tx.routineStep.findMany({
-    where: { routineId, timeOfDay: data.timeOfDay, active: true },
-    orderBy: { order: "asc" },
-    select: { id: true },
-  });
-  const at = Math.min(Math.max(position, 1), existing.length + 1);
-  const created = await tx.routineStep.create({ data: { ...data, routineId, order: at } });
-
-  const ordered = [...existing.slice(0, at - 1).map((s) => s.id), created.id, ...existing.slice(at - 1).map((s) => s.id)];
-  for (let i = 0; i < ordered.length; i++) {
-    await tx.routineStep.update({ where: { id: ordered[i] }, data: { order: i + 1 } });
-  }
 }
 
 /**

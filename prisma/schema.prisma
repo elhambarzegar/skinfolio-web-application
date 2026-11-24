@@ -29,6 +29,7 @@ model User {
 
   intakeResponses IntakeResponse[]
   shelfItems      ShelfItem[]
+  routineChanges  RoutineChange[]
   routines        Routine[]
   checkIns        CheckIn[]
   stepLogs        StepLog[]
@@ -177,6 +178,7 @@ model Routine {
   checkIns CheckIn[]
   proTips  ProTip[]
   stepLogs StepLog[]
+  changes  RoutineChange[]
 }
 
 enum TimeOfDay {
@@ -345,11 +347,64 @@ model ShelfItem {
   ranOutAt  DateTime?
   addedAt   DateTime    @default(now())
 
+  // Prescribed by a doctor or other professional: the routine is built
+  // around it, not the other way round.
+  prescribed Boolean @default(false)
+  // Their prescriber's directions, in their own words.
+  directions String?
+
   // The person's own photo of this product's label. When set it is used
   // instead of the app library's ingredient list, for this person only.
   photoSourceId String?        @unique
   photoSource   ProductSource? @relation("ShelfPhotoSource", fields: [photoSourceId], references: [id])
 
   @@unique([userId, productId])
+  @@index([userId, status])
+}
+
+enum ChangeKind {
+  /// A shelf product the person wants in the routine.
+  USE_PRODUCT
+  /// A prescribed product, which the routine adapts around.
+  PRESCRIBED
+  /// A new product taking the place of one that ran out.
+  SWAP
+  /// An automatic check after something changed (e.g. a label photo).
+  RECHECK
+}
+
+enum ChangeStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+  /// The routine changed after this was suggested, so it no longer fits.
+  STALE
+}
+
+/// A suggested change to the routine in use. Nothing is applied until the
+/// person has read it and approved it; what gets applied is exactly what is
+/// stored here, never what the browser sends back.
+model RoutineChange {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routineId    String
+  routine      Routine      @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  kind         ChangeKind
+  status       ChangeStatus @default(PENDING)
+  // What set this off, in the person's terms ("You added a photo of ...").
+  trigger      String
+  // One sentence: what is being proposed.
+  summary      String
+  // Plain-language "what this means for you" points.
+  consequences Json
+  risk         String       @default("none")
+  // The exact operations to apply, and the same thing as readable lines.
+  ops          Json
+  diff         Json
+  createdAt    DateTime     @default(now())
+  // When they pressed "I understand, make this change" (or dismissed it).
+  decidedAt    DateTime?
+
   @@index([userId, status])
 }

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { productViewsFor } from "@/lib/shelf";
+import { pendingChanges } from "@/lib/routine/applyChange";
 import { RULE_SOURCES, stripRuleNumbers } from "@/lib/routine/policy";
 import { RoutineReview, type RoutineStepView } from "./routine-review";
 import type { ProTipView } from "@/components/pro-tip-card";
@@ -103,8 +104,11 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
     .filter((r): r is { label: string; url: string } => r !== null)
     .filter((r, i, all) => all.findIndex((o) => o.url === r.url) === i);
 
+  const waiting = routine.status === "DRAFT" ? [] : await pendingChanges(session.user.id);
+
   return (
     <RoutineReview
+      pending={waiting}
       routineId={routine.id}
       status={routine.status}
       rationale={stripRuleNumbers(routine.rationale)}

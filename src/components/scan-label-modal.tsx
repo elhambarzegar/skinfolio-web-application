@@ -198,7 +198,7 @@ export function ScanLabelModal({
         </div>
         <p className="sub">{productLabel}</p>
         <p className="note">
-          This photo is for your own bottle. It is used for your routine only, and it doesn&rsquo;t change what anyone else sees.
+          This photo is for your own bottle. It is used for your routine only, and it doesn&rsquo;t change what anyone else sees. If the product is in your routine, we&rsquo;ll look at your routine again and ask you before anything changes.
         </p>
 
         <canvas ref={canvasRef} className="hidden" />

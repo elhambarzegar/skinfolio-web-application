@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ScanLabelModal } from "@/components/scan-label-modal";
-import { AddProductModal } from "@/components/add-product-modal";
+import { ChangeFlow } from "@/components/change-flow";
 import { buildShopLinks } from "@/lib/shopLinks";
 
 export type ShelfProduct = {
@@ -13,6 +13,7 @@ export type ShelfProduct = {
   category: string;
   categoryLabel: string;
   ranOut: boolean;
+  prescribed: boolean;
   /** Where it is used in the routine in use, e.g. "Morning · Every day". Empty when it isn't in the routine. */
   uses: string[];
   /** Null when we have no ingredient list at all. */
@@ -117,12 +118,16 @@ function FindAlternativeModal({
 
 function ShelfCard({
   product,
+  hasRoutine,
   onScan,
   onAlternative,
+  onUse,
 }: {
   product: ShelfProduct;
+  hasRoutine: boolean;
   onScan: (p: ShelfProduct) => void;
   onAlternative: (p: ShelfProduct) => void;
+  onUse: (p: ShelfProduct) => void;
 }) {
   const router = useRouter();
   const [, startRefresh] = useTransition();
@@ -168,6 +173,7 @@ function ShelfCard({
             ✓ {u}
           </span>
         ))}
+        {product.prescribed && <span className="badge b-rx">Prescribed</span>}
         {product.ranOut && <span className="badge b-out">Ran out · paused</span>}
         {!ing && <span className="badge b-out">No ingredients yet</span>}
       </div>
@@ -217,6 +223,11 @@ function ShelfCard({
             I ran out
           </button>
         )}
+        {!inRoutine && !product.ranOut && hasRoutine && (
+          <button type="button" disabled={busy} onClick={() => onUse(product)} className="btn btn-sm">
+            Use in my routine
+          </button>
+        )}
         {!inRoutine && (
           <button type="button" disabled={busy} onClick={() => call("DELETE")} className="link-btn text-danger">
             Remove from shelf
@@ -231,11 +242,12 @@ function ShelfCard({
 }
 
 /** The whole shelf, in three groups: what's in the routine, what isn't, and what has run out. */
-export function ShelfList({ products }: { products: ShelfProduct[] }) {
+export function ShelfList({ products, hasRoutine }: { products: ShelfProduct[]; hasRoutine: boolean }) {
   const router = useRouter();
   const [scanning, setScanning] = useState<ShelfProduct | null>(null);
   const [alternativeFor, setAlternativeFor] = useState<ShelfProduct | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [swapping, setSwapping] = useState(false);
+  const [using, setUsing] = useState<ShelfProduct | null>(null);
 
   const groups = [
     { key: "in", title: "In my routine", items: products.filter((p) => !p.ranOut && p.uses.length > 0) },
@@ -259,7 +271,7 @@ export function ShelfList({ products }: { products: ShelfProduct[] }) {
               ) : (
                 <div className="steps">
                   {g.items.map((p) => (
-                    <ShelfCard key={p.productId} product={p} onScan={setScanning} onAlternative={setAlternativeFor} />
+                    <ShelfCard key={p.productId} product={p} hasRoutine={hasRoutine} onScan={setScanning} onAlternative={setAlternativeFor} onUse={setUsing} />
                   ))}
                 </div>
               )}
@@ -280,21 +292,26 @@ export function ShelfList({ products }: { products: ShelfProduct[] }) {
         />
       )}
 
-      {alternativeFor && !adding && (
+      {alternativeFor && !swapping && (
         <FindAlternativeModal
           product={alternativeFor}
           onClose={() => setAlternativeFor(null)}
-          onPicked={() => setAdding(true)}
+          onPicked={() => setSwapping(true)}
         />
       )}
 
-      {adding && (
-        <AddProductModal
+      {alternativeFor && swapping && (
+        <ChangeFlow
+          mode={{ kind: "swap", replacesProductId: alternativeFor.productId, label: alternativeFor.name }}
           onClose={() => {
-            setAdding(false);
+            setSwapping(false);
             setAlternativeFor(null);
           }}
         />
+      )}
+
+      {using && (
+        <ChangeFlow mode={{ kind: "use", productId: using.productId, label: using.name }} onClose={() => setUsing(null)} />
       )}
     </>
   );

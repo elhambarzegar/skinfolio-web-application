@@ -1,0 +1,356 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import type { ChangeKind } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { confidenceBucket } from "@/lib/productLookup/confidence";
+import { productViewsFor, type ProductView } from "@/lib/shelf";
+import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
+import { INGREDIENT_RULES, stripRuleNumbers } from "./policy";
+import { agentErrorMessage } from "./generate";
+import {
+  ChangeProposalOutput,
+  cleanOps,
+  describeOps,
+  endPosition,
+  type ChangeOp,
+  type Period,
+  type ProductCtx,
+  type StepCtx,
+} from "./changes";
+
+const MODEL = "claude-opus-5";
+
+export type ProposeInput = {
+  userId: string;
+  kind: ChangeKind;
+  /** What set this off, in the person's terms: "You added a photo of …". */
+  trigger: string;
+  /** The product(s) the change is about. They must be on the person's shelf. */
+  subjectProductIds: string[];
+  /** SWAP: the product that ran out; every step that uses it is replaced. */
+  replacesProductId?: string;
+  /** Prescribed: the prescriber's directions, in the person's words. */
+  directions?: string | null;
+  /** Prescribed with no ingredient list: when and how often they use it. */
+  usage?: { periods: Period[]; frequencyPerWeek: number };
+};
+
+export type ProposeResult =
+  | { ok: true; changeId: string | null }
+  | { ok: false; reason: "no_routine" }
+  | { ok: false; reason: "not_possible"; message: string }
+  | { ok: false; reason: "agent_error"; message: string };
+
+const SYSTEM_PROMPT = `You adjust one person's existing skincare routine when something changes. You are given their routine as it is now, the other products on their shelf, what changed, and the ingredients you know. Propose the exact changes, and tell the person plainly what those changes mean for them.
+
+Ground every claim in the ingredients given and never guess. If a product's ingredients are missing or marked low-confidence, say so in your consequences and let that limit what you claim.
+
+INGREDIENT RULES POLICY:
+${INGREDIENT_RULES}
+
+Never write a rule number, or the word "Rule", in anything you write. Write the reason in plain words.
+
+Write for a reader over 40 who is not an expert: short, warm, direct sentences, no jargon.
+
+## What you return
+
+"summary": one sentence saying what you propose.
+"consequences": 2 to 5 short plain sentences about what this means for the person: the benefit, any risk, what to watch for (patch test, introduce slowly, expect some dryness), and anything no longer covered. Honest about trade-offs. If nothing needs to change, an empty list.
+"risk": "none", "caution" (works but needs care) or "conflict" (a real problem the person should understand before agreeing).
+"ops": the exact operations, in order. Each refers to real ids from the lists below:
+- {"op":"add", productId, timeOfDay, position, frequencyPerWeek, timeCostMinutes, rationale}: bring a shelf product into the routine. "position" is the step number it takes in that period; the steps from that number on move down by one. Numbering is as listed below. Keep the order Cleanse, Treat, Moisturize, Protect (sunscreen is morning only and always last). frequencyPerWeek is 7 for daily; strong actives start lower. timeCostMinutes is about 1 (2 for sunscreen).
+- {"op":"remove", stepId, reason}: take a product out of the routine.
+- {"op":"frequency", stepId, frequencyPerWeek, reason}: change how often a product is used.
+- {"op":"swap", stepId, productId, frequencyPerWeek, rationale}: a different product takes over a step's place. frequencyPerWeek is how often the new product should be used there (null to keep the step's current frequency).
+"rationale" and "reason" are one plain sentence each.
+
+## Rules for the operations
+
+- Use only products on the person's shelf. NEVER invent or name a product to buy. If something is missing, say what kind of product in a consequence.
+- Make the smallest change that makes the routine work. Prefer changing how often something is used, or where it goes, over removing it. Remove a product only when it exactly duplicates another or is a real conflict.
+- Steps marked RAN OUT are paused until the person restocks. Don't build on them.
+- Do not touch a step that doesn't need to change.
+- Only operations are carried out. Anything your summary or consequences say will change (how often something is used, where it goes, something being removed) MUST appear as an operation, and every operation must be explained in your text. Never promise a change you did not include as an operation.
+
+## What kind of change this is
+
+USE_PRODUCT: the person chose to use a shelf product that isn't in their routine. Respect their choice and don't refuse. Add it where it belongs. Be honest in the consequences, especially if it clashes with something; if it does, adjust the other steps as little as possible to reduce the risk and set the risk accordingly.
+
+PRESCRIBED: a doctor or other professional prescribed this product. Do not question whether they should use it and never suggest stopping it. If directions are given, they decide when and how often. Build the routine around it: change, reduce or remove other products that clash with it. If the routine needs support alongside it (for example daily sunscreen with a retinoid) and a suitable product is on the shelf but not in the routine, add it; if there isn't one, say what kind is needed in a consequence. Remind them their prescriber's directions come first.
+
+SWAP: a new product takes the place of one that ran out. Use a "swap" op for each step of the product that ran out (the step ids are given). Check the new product against the rest of the routine and make any needed adjustments.
+
+RECHECK: something changed about a product already in the routine (for example the person photographed their own bottle, so its real ingredients are now known where they weren't before). Look at the whole routine again with that new information, exactly as you would if you were deciding where this product belongs from scratch: overlapping actives (two retinoids, a retinoid with exfoliating acids, several actives in one night), timing rules, and sun protection. Propose the changes that are needed and nothing else. If the product that changed is prescribed, never change how it is used: adjust the OTHER products around it. If, after really checking, the routine still works as it is, return an empty ops list, an empty consequences list and the summary "Nothing needs to change."
+
+## Their profile
+
+Use it to shape how many changes you propose, not to change safety rules: lower experience means fewer, simpler changes; "use what I own" means lean on existing products; "simplest possible" means avoid adding steps.`;
+
+type StepRow = {
+  id: string;
+  timeOfDay: Period;
+  order: number;
+  frequencyPerWeek: number;
+  productId: string | null;
+  suggestedDescription: string | null;
+  product: { id: string; brand: string; name: string; step: string } | null;
+};
+
+function ingredientNote(view: ProductView | undefined): string {
+  const source = view?.source;
+  if (!source) return "[no ingredient data available]";
+  if (confidenceBucket(source.confidenceScore) === "low") return `[low-confidence ingredient data] ${source.ingredientsInci}`;
+  return source.ingredientsInci;
+}
+
+function cleanSentence(text: string): string {
+  return stripRuleNumbers(text).trim();
+}
+
+export async function proposeRoutineChange(input: ProposeInput): Promise<ProposeResult> {
+  const { userId, kind } = input;
+
+  const routine = await prisma.routine.findFirst({
+    where: { userId, status: { in: ["ACTIVE", "PAUSED"] } },
+    orderBy: { createdAt: "desc" },
+    include: {
+      steps: {
+        where: { active: true },
+        include: { product: true },
+        orderBy: [{ timeOfDay: "asc" }, { order: "asc" }],
+      },
+    },
+  });
+  if (!routine) return { ok: false, reason: "no_routine" };
+
+  const shelf = await prisma.shelfItem.findMany({ where: { userId }, include: { product: true } });
+  const shelfById = new Map(shelf.map((i) => [i.productId, i]));
+
+  for (const id of input.subjectProductIds) {
+    if (!shelfById.has(id)) return { ok: false, reason: "not_possible", message: "That product isn't on your shelf." };
+  }
+
+  const steps: StepRow[] = routine.steps.map((s) => ({
+    id: s.id,
+    timeOfDay: s.timeOfDay,
+    order: s.order,
+    frequencyPerWeek: s.frequencyPerWeek,
+    productId: s.productId,
+    suggestedDescription: s.suggestedDescription,
+    product: s.product,
+  }));
+  const stepCtx: StepCtx[] = steps.map(({ id, productId, timeOfDay, order, frequencyPerWeek }) => ({ id, productId, timeOfDay, order, frequencyPerWeek }));
+
+  const views = await productViewsFor(userId, [
+    ...steps.flatMap((s) => (s.productId ? [s.productId] : [])),
+    ...shelf.map((i) => i.productId),
+  ]);
+
+  const productCtx = new Map<string, ProductCtx>(shelf.map((i) => [i.productId, { id: i.productId, brand: i.product.brand, name: i.product.name }]));
+  for (const s of steps) if (s.product) productCtx.set(s.product.id, { id: s.product.id, brand: s.product.brand, name: s.product.name });
+
+  // Products the change may bring in: what's on the shelf and not run out.
+  const allowed = new Set(shelf.filter((i) => i.status === "ACTIVE").map((i) => i.productId));
+  input.subjectProductIds.forEach((id) => allowed.add(id));
+
+  const replacedSteps = input.replacesProductId ? steps.filter((s) => s.productId === input.replacesProductId) : [];
+  if (kind === "SWAP" && replacedSteps.length === 0) {
+    return { ok: false, reason: "not_possible", message: "That product isn't in your routine." };
+  }
+
+  const subject = input.subjectProductIds[0];
+
+  // ── A prescribed product with no ingredient list can't be checked. It goes
+  // in exactly as the person entered it, and we say so.
+  if (kind === "PRESCRIBED" && subject && !views.get(subject)?.source) {
+    const periods = input.usage?.periods ?? [];
+    const frequencyPerWeek = input.usage?.frequencyPerWeek ?? 7;
+    if (periods.length === 0) {
+      return { ok: false, reason: "not_possible", message: "Tell us when you use it, morning, evening or both." };
+    }
+    const ops: ChangeOp[] = periods.map((timeOfDay) => {
+      const inPeriod = steps.filter((s) => s.timeOfDay === timeOfDay);
+      const lastProtect = inPeriod.map((s) => s.product?.step).lastIndexOf("PROTECT");
+      return {
+        op: "add",
+        productId: subject,
+        timeOfDay,
+        position: endPosition(inPeriod.length, lastProtect),
+        frequencyPerWeek,
+        timeCostMinutes: 1,
+        rationale: "Prescribed. Added exactly as you entered it.",
+      };
+    });
+    const clean = cleanOps(ops, stepCtx, allowed);
+    if (clean.length === 0) return { ok: false, reason: "not_possible", message: "That product is already in your routine." };
+
+    const name = productCtx.get(subject)?.name ?? "this product";
+    return save(input, routine.id, {
+      summary: `Add ${name} to your routine exactly as you entered it.`,
+      consequences: [
+        "We can't check this product against the rest of your routine, because we don't know what's in it.",
+        "Your prescriber's directions come first. If they differ from this routine, follow them.",
+        "A photo of the label would let us check it. You can add one from your shelf at any time.",
+      ],
+      risk: "caution",
+      ops: clean,
+      stepCtx,
+      productCtx,
+    });
+  }
+
+  // ── Everything else: ask the agent.
+  const intake = await prisma.intakeResponse.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } });
+
+  const numbered = (period: Period) => steps.filter((s) => s.timeOfDay === period);
+  const routineBlock = (["AM", "PM"] as const)
+    .flatMap((period) =>
+      numbered(period).map((s, i) => {
+        if (!s.product) return `- stepId: ${s.id} | ${period} step ${i + 1} | [unfilled gap: ${s.suggestedDescription ?? "unspecified"}]`;
+        const view = views.get(s.product.id);
+        const ranOut = view?.shelfStatus === "RAN_OUT" ? " [RAN OUT]" : "";
+        return `- stepId: ${s.id} | ${period} step ${i + 1} | ${s.product.brand} — ${s.product.name} (${s.product.step}, ${s.frequencyPerWeek}x/week)${ranOut} | ingredients: ${ingredientNote(view)}`;
+      })
+    )
+    .join("\n");
+
+  const inRoutine = new Set(steps.flatMap((s) => (s.productId ? [s.productId] : [])));
+  const shelfBlock = shelf
+    .filter((i) => !inRoutine.has(i.productId) && i.status === "ACTIVE")
+    .map(
+      (i) =>
+        `- productId: ${i.productId} | ${i.product.brand} — ${i.product.name} (${i.product.step})${i.prescribed ? " [prescribed]" : ""} | ingredients: ${ingredientNote(views.get(i.productId))}`
+    )
+    .join("\n");
+
+  const subjectBlock = input.subjectProductIds
+    .map((id) => {
+      const item = shelfById.get(id)!;
+      return `- productId: ${id} | ${item.product.brand} — ${item.product.name} (${item.product.step})${item.prescribed ? " [prescribed]" : ""} | ingredients: ${ingredientNote(views.get(id))}`;
+    })
+    .join("\n");
+
+  const profile = [
+    intake?.concerns?.length ? `Concerns: ${intake.concerns.join(", ")}` : null,
+    intake?.experienceLevel ? `Experience: ${EXPERIENCE_LABEL[intake.experienceLevel]}` : null,
+    intake?.priority ? `Priority: ${PRIORITY_LABEL[intake.priority]}` : null,
+    intake?.complexityPreference ? `Complexity preference: ${COMPLEXITY_LABEL[intake.complexityPreference]}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const replacedBlock = replacedSteps.length
+    ? `\n\nThe product that ran out is used in these steps (swap each one): ${replacedSteps.map((s) => s.id).join(", ")}`
+    : "";
+  const directions = input.directions?.trim()
+    ? `\n\nTheir prescriber's directions, in the person's words: "${input.directions.trim().slice(0, 600)}"`
+    : "";
+
+  const userContent = `Kind of change: ${kind}
+What happened: ${input.trigger}
+
+The product(s) this is about:
+${subjectBlock}${replacedBlock}${directions}
+
+${profile ? profile + "\n\n" : ""}Current routine:
+${routineBlock || "(no steps)"}
+
+Other products on their shelf, not in the routine (the only ones you may add):
+${shelfBlock || "(none)"}`;
+
+  const client = new Anthropic();
+  let parsed;
+  try {
+    const response = await client.messages.parse({
+      model: MODEL,
+      max_tokens: 4000,
+      system: SYSTEM_PROMPT,
+      output_config: { effort: "high", format: zodOutputFormat(ChangeProposalOutput) },
+      messages: [{ role: "user", content: userContent }],
+    });
+    parsed = response.parsed_output;
+  } catch (err) {
+    console.error("[proposeChange] request failed:", err);
+    return { ok: false, reason: "agent_error", message: agentErrorMessage(err) };
+  }
+  if (!parsed) {
+    return { ok: false, reason: "agent_error", message: "The agent's answer didn't match the expected format. Try again." };
+  }
+
+  // The agent may only touch what really exists.
+  let ops = cleanOps(parsed.ops as ChangeOp[], stepCtx, allowed);
+
+  // A swap must replace every step of the product that ran out, whatever else the agent said.
+  if (kind === "SWAP" && subject) {
+    for (const s of replacedSteps) {
+      if (!ops.some((o) => o.op === "swap" && o.stepId === s.id)) {
+        ops = ops.filter((o) => !("stepId" in o && o.stepId === s.id));
+        ops.push({ op: "swap", stepId: s.id, productId: subject, frequencyPerWeek: null, rationale: "Takes the place of the product you ran out of." });
+      }
+    }
+  }
+
+  if (kind === "RECHECK" && ops.length === 0) {
+    // Logged so "why didn't it flag anything?" can be answered.
+    console.info(`[proposeChange] re-check found nothing to change. Agent said: "${parsed.summary}" | ${parsed.consequences.join(" | ")} | proposed ${parsed.ops.length} op(s), kept 0`);
+    return { ok: true, changeId: null };
+  }
+
+  // Using, prescribing or swapping a product must actually bring it in.
+  if (kind !== "RECHECK" && subject && !ops.some((o) => (o.op === "add" || o.op === "swap") && o.productId === subject)) {
+    return { ok: false, reason: "agent_error", message: "We couldn't work out where this product goes. Try again." };
+  }
+
+  return save(input, routine.id, {
+    summary: cleanSentence(parsed.summary),
+    consequences: parsed.consequences.map(cleanSentence).filter(Boolean),
+    risk: parsed.risk,
+    ops: ops.map((o) => ({
+      ...o,
+      ...("rationale" in o ? { rationale: cleanSentence(o.rationale) } : {}),
+      ...("reason" in o ? { reason: cleanSentence(o.reason) } : {}),
+    })) as ChangeOp[],
+    stepCtx,
+    productCtx,
+  });
+}
+
+async function save(
+  input: ProposeInput,
+  routineId: string,
+  r: {
+    summary: string;
+    consequences: string[];
+    risk: "none" | "caution" | "conflict";
+    ops: ChangeOp[];
+    stepCtx: StepCtx[];
+    productCtx: Map<string, ProductCtx>;
+  }
+): Promise<ProposeResult> {
+  const diff = describeOps(r.ops, r.stepCtx, r.productCtx);
+
+  const change = await prisma.$transaction(async (tx) => {
+    // A newer automatic check replaces an older one that is still waiting.
+    if (input.kind === "RECHECK") {
+      await tx.routineChange.updateMany({
+        where: { userId: input.userId, routineId, kind: "RECHECK", status: "PENDING" },
+        data: { status: "STALE" },
+      });
+    }
+    return tx.routineChange.create({
+      data: {
+        userId: input.userId,
+        routineId,
+        kind: input.kind,
+        trigger: input.trigger,
+        summary: r.summary,
+        consequences: r.consequences,
+        risk: r.risk,
+        ops: r.ops,
+        diff,
+      },
+    });
+  });
+
+  return { ok: true, changeId: change.id };
+}

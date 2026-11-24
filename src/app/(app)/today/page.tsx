@@ -2,11 +2,14 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { loadToday } from "@/lib/today";
 import { BuildRoutineButton } from "@/components/build-routine-button";
+import { PendingChanges } from "@/components/pending-changes";
+import { pendingChanges } from "@/lib/routine/applyChange";
 import { TodayChecklist } from "./today-checklist";
 
 export default async function TodayPage() {
   const session = await auth();
   const data = await loadToday(session!.user.id);
+  const waiting = await pendingChanges(session!.user.id);
 
   if (data.state === "no_intake") {
     return (
@@ -83,6 +86,8 @@ export default async function TodayPage() {
         dateLabel={data.dateLabel}
         firstName={data.firstName}
       />
+
+      <PendingChanges changes={waiting} />
 
       {data.draftRoutineId && (
         <div className="callout c-sun">

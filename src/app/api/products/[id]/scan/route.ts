@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { scanIngredientsFromPhoto } from "@/lib/productLookup/photoScan";
+import { proposeRoutineChange } from "@/lib/routine/proposeChange";
 import { scoreConfidence, confidenceBucket } from "@/lib/productLookup/confidence";
 
 const ALLOWED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
@@ -73,6 +74,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
     }
     await tx.shelfItem.update({ where: { id: item.id }, data: { photoSourceId: newSource.id } });
+  });
+
+  // Every change checks the routine: with the real ingredients now known,
+  // look again at the routine in the background. If something needs to
+  // change it waits for the person's approval; if not, nothing happens.
+  const userId = session.user.id;
+  after(async () => {
+    const inRoutine = await prisma.routineStep.findFirst({
+      where: { productId: id, active: true, routine: { userId, status: { in: ["ACTIVE", "PAUSED"] } } },
+      select: { id: true },
+    });
+    if (!inRoutine) return;
+    const product = await prisma.product.findUnique({ where: { id }, select: { brand: true, name: true } });
+    const result = await proposeRoutineChange({
+      userId,
+      kind: "RECHECK",
+      trigger: `You added a photo of your ${product?.name ?? "product"} (${product?.brand ?? ""}), so we now know exactly what is in it.`,
+      subjectProductIds: [id],
+    });
+    if (!result.ok) console.error("[scan] routine re-check did not complete:", result);
   });
 
   return NextResponse.json({
