@@ -268,15 +268,28 @@ export function OnboardingForm({ initial }: { initial: OnboardingInitial | null 
 
           <div className="mt-6 flex flex-col gap-3">
             {[
-              "Helps organize your skincare routine.",
-              "Explains ingredient interactions.",
-              "Suggests routines based on your goals.",
+              "Helps you make sense of what you already own.",
+              "Tells you which products you actually need, and which you don't.",
+              "Explains how ingredients work together.",
+              "Builds your routine around your goals, not a ready-made one.",
             ].map((line) => (
               <div key={line} className="flex items-start gap-3 text-[20px] text-ink">
                 <span className="font-bold text-ok" aria-hidden="true">✓</span>
                 {line}
               </div>
             ))}
+          </div>
+
+          <div className="callout c-sky mt-6">
+            <h2>Independent, with nothing to sell</h2>
+            <p className="text-[20px] leading-relaxed">
+              Skinfolio isn&rsquo;t owned by, paid by or connected to any skincare brand or store. It never promotes a brand or
+              a product, and it doesn&rsquo;t push a set routine. Think of it as a consultant that cuts through the confusion of
+              too many products to buy, and helps you see what you need and what you don&rsquo;t.
+            </p>
+            <p className="note" style={{ color: "var(--ink)" }}>
+              Any shopping links are plain searches, not recommendations.
+            </p>
           </div>
 
           <div className="callout c-blush mt-6">
