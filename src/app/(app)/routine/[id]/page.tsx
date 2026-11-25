@@ -106,9 +106,22 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
 
   const waiting = routine.status === "DRAFT" ? [] : await pendingChanges(session.user.id);
 
+  // A routine in use and one waiting for review can both exist. Each page says so,
+  // so it's never unclear which one a change went into.
+  const [liveRoutine, waitingDraft] = await Promise.all([
+    routine.status === "DRAFT"
+      ? prisma.routine.findFirst({ where: { userId: session.user.id, status: { in: ["ACTIVE", "PAUSED"] } }, orderBy: { createdAt: "desc" }, select: { id: true } })
+      : null,
+    routine.status !== "DRAFT"
+      ? prisma.routine.findFirst({ where: { userId: session.user.id, status: "DRAFT" }, orderBy: { createdAt: "desc" }, select: { id: true } })
+      : null,
+  ]);
+
   return (
     <RoutineReview
       pending={waiting}
+      liveRoutineId={liveRoutine?.id ?? null}
+      waitingDraftId={waitingDraft?.id ?? null}
       routineId={routine.id}
       status={routine.status}
       rationale={stripRuleNumbers(routine.rationale)}

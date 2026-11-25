@@ -55,6 +55,15 @@ describe("cleanOps", () => {
     expect(cleanOps([{ op: "swap", stepId: "s1", productId: "newcream", frequencyPerWeek: null, rationale: "x" }], steps, shelf)).toHaveLength(1);
   });
 
+  it("lets a product fill a suggested gap (a swap on a step with no product)", () => {
+    const ops: ChangeOp[] = [{ op: "swap", stepId: "gap", productId: "newcream", frequencyPerWeek: null, rationale: "x" }];
+    expect(cleanOps(ops, steps, shelf)).toHaveLength(1);
+  });
+
+  it("never removes a gap", () => {
+    expect(cleanOps([{ op: "remove", stepId: "gap", reason: "x" }], steps, shelf)).toEqual([]);
+  });
+
   it("stops at eight operations", () => {
     const many = Array.from({ length: 12 }, (_, i): ChangeOp => ({ op: "frequency", stepId: "s3", frequencyPerWeek: 2, reason: String(i) }));
     expect(cleanOps(many, steps, shelf).length).toBeLessThanOrEqual(8);
@@ -78,6 +87,15 @@ describe("describeOps", () => {
     expect(lines[0].text).toBe("Add Retinol Serum (Brand) to your evening routine, step 2, 2 days a week.");
     expect(lines[1].text).toBe("Use Hydrating Serum (Other) (evening) 3 days a week instead of every day.");
     expect(lines[2].text).toBe("Use Cream (New) instead of Hydrating Serum (Other) in your evening routine, step 1, 4 days a week.");
+  });
+});
+
+describe("describeOps for a gap", () => {
+  it("says the product fills the step that was suggested", () => {
+    const products = new Map<string, ProductCtx>([["newcream", { id: "newcream", brand: "New", name: "Cream" }]]);
+    const [line] = describeOps([{ op: "swap", stepId: "gap", productId: "newcream", frequencyPerWeek: null, rationale: "x" }], steps, products);
+    expect(line.kind).toBe("add");
+    expect(line.text).toBe("Use Cream (New) for the step we suggested in your evening routine, step 2.");
   });
 });
 

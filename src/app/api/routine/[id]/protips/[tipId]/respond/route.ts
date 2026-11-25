@@ -11,7 +11,7 @@ type Tx = Prisma.TransactionClient;
  * CHANGE tip is a description plus shop-search links. A tip that is only
  * "go and buy something" can't be accepted: accepting means nothing until a
  * real product exists. Those tips are settled by adding the product (see
- * add-product/integrate), and here they can only be skipped. Tips that
+ * the change flow), and here they can only be skipped. Tips that
  * change something real (remove a product, change how often it's used) are
  * accepted or rejected as before. See tipKind.
  */

@@ -6,7 +6,8 @@ import { CATEGORY_LABEL } from "@/lib/productCategory";
 import { freqPhrase } from "@/lib/schedule";
 import { ProTipsList } from "@/components/pro-tips-list";
 import type { ProTipView } from "@/components/pro-tip-card";
-import { AddProductModal } from "@/components/add-product-modal";
+import { ChangeFlow } from "@/components/change-flow";
+import Link from "next/link";
 import { PendingChanges } from "@/components/pending-changes";
 import type { ChangeView } from "@/lib/routine/changes";
 
@@ -71,6 +72,8 @@ function needsDecision(step: RoutineStepView): boolean {
 
 export function RoutineReview({
   pending,
+  liveRoutineId,
+  waitingDraftId,
   routineId,
   status,
   rationale,
@@ -79,6 +82,10 @@ export function RoutineReview({
   proTips,
 }: {
   pending: ChangeView[];
+  /** When this routine is a draft: the routine in use, which stays as it is until this one is approved. */
+  liveRoutineId: string | null;
+  /** When this routine is in use: a newer one waiting for review. */
+  waitingDraftId: string | null;
   routineId: string;
   status: string;
   rationale: string;
@@ -91,6 +98,7 @@ export function RoutineReview({
   const [period, setPeriod] = useState<"AM" | "PM">(steps.some((s) => s.timeOfDay === "AM") ? "AM" : "PM");
   const [busyStepId, setBusyStepId] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<ProTipView | null>(null);
   // Open at first if anything needs deciding, then stays however the person leaves it.
@@ -125,6 +133,26 @@ export function RoutineReview({
     }
   }
 
+  async function handleDiscard() {
+    if (!liveRoutineId) return;
+    setDiscarding(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/routine/${routineId}/discard`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Couldn't discard this version.");
+        setDiscarding(false);
+        return;
+      }
+      router.push(`/routine/${liveRoutineId}`);
+      router.refresh();
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+      setDiscarding(false);
+    }
+  }
+
   async function handleAccept() {
     setAccepting(true);
     setError(null);
@@ -156,10 +184,38 @@ export function RoutineReview({
 
       <PendingChanges changes={pending} />
 
-      {status === "DRAFT" && (
+      {status === "DRAFT" && !liveRoutineId && (
         <div className="callout c-sun">
           <h2>Look it over, then approve it</h2>
           <p>Nothing starts until you approve it.</p>
+        </div>
+      )}
+
+      {status === "DRAFT" && liveRoutineId && (
+        <div className="callout c-sun">
+          <h2>This is an updated version, not the one you use</h2>
+          <p>
+            Changes you make here, including products you add, only count once you approve it. Until then your current
+            routine, Today and your shelf stay as they are.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Link href={`/routine/${liveRoutineId}`} className="btn btn-2 btn-sm flex-1">
+              See the routine in use
+            </Link>
+            <button type="button" onClick={handleDiscard} disabled={discarding} className="btn btn-2 btn-sm flex-1">
+              {discarding ? "Discarding…" : "Discard this version"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status !== "DRAFT" && waitingDraftId && (
+        <div className="callout c-sun">
+          <h2>An updated version is waiting for your review</h2>
+          <p>Products added to it don&rsquo;t show here until you approve it.</p>
+          <Link href={`/routine/${waitingDraftId}`} className="btn btn-sm">
+            Review it
+          </Link>
         </div>
       )}
 
@@ -354,9 +410,14 @@ export function RoutineReview({
       )}
 
       {addingFor && (
-        <AddProductModal
-          routineId={routineId}
-          fill={{ stepId: addingFor.stepId, description: addingFor.shopQuery ?? addingFor.summary }}
+        <ChangeFlow
+          mode={{
+            kind: "fill",
+            routineId,
+            stepId: addingFor.stepId,
+            description: addingFor.shopQuery ?? addingFor.summary,
+            draft: status === "DRAFT",
+          }}
           onClose={() => setAddingFor(null)}
         />
       )}

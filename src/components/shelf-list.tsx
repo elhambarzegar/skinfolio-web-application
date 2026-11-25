@@ -14,6 +14,8 @@ export type ShelfProduct = {
   categoryLabel: string;
   ranOut: boolean;
   prescribed: boolean;
+  /** Not in the routine in use, but in a newer version still waiting for review. */
+  inWaitingDraft: boolean;
   /** Where it is used in the routine in use, e.g. "Morning · Every day". Empty when it isn't in the routine. */
   uses: string[];
   /** Null when we have no ingredient list at all. */
@@ -174,6 +176,7 @@ function ShelfCard({
           </span>
         ))}
         {product.prescribed && <span className="badge b-rx">Prescribed</span>}
+        {product.inWaitingDraft && <span className="badge b-new">In the new version waiting for your OK</span>}
         {product.ranOut && <span className="badge b-out">Ran out · paused</span>}
         {!ing && <span className="badge b-out">No ingredients yet</span>}
       </div>
@@ -230,7 +233,7 @@ function ShelfCard({
             Use in my routine
           </button>
         )}
-        {!inRoutine && (
+        {!inRoutine && !product.inWaitingDraft && (
           <button type="button" disabled={busy} onClick={() => call("DELETE")} className="link-btn text-danger">
             Remove from shelf
           </button>

@@ -157,6 +157,15 @@ export function describeOps(ops: ChangeOp[], steps: StepCtx[], products: Map<str
       ];
     }
     const how = op.frequencyPerWeek && op.frequencyPerWeek !== step.frequencyPerWeek ? `, ${freqWords(op.frequencyPerWeek)}` : "";
+    // A gap has no product yet: this fills it.
+    if (!step.productId) {
+      return [
+        {
+          kind: "add",
+          text: `Use ${name(op.productId)} for the step we suggested in your ${periodWord(step.timeOfDay)} routine, step ${stepNumber(step)}${how}.`,
+        },
+      ];
+    }
     return [
       {
         kind: "change",

@@ -33,6 +33,10 @@ export type ProposeInput = {
   directions?: string | null;
   /** Prescribed with no ingredient list: when and how often they use it. */
   usage?: { periods: Period[]; frequencyPerWeek: number };
+  /** Work on this routine (for example one still being reviewed) instead of the one in use. */
+  routineId?: string;
+  /** The product is meant for this suggested gap (a Pro Tip's "look for …"), and takes its place. */
+  fillStepId?: string;
 };
 
 export type ProposeResult =
@@ -68,6 +72,7 @@ Write for a reader over 40 who is not an expert: short, warm, direct sentences, 
 
 - Use only products on the person's shelf. NEVER invent or name a product to buy. If something is missing, say what kind of product in a consequence.
 - Make the smallest change that makes the routine work. Prefer changing how often something is used, or where it goes, over removing it. Remove a product only when it exactly duplicates another or is a real conflict.
+- A step marked "[unfilled gap: …]" is a suggestion with no product yet. If a product from the shelf suits a gap (it's the kind of thing the gap describes), use a "swap" op on that gap's stepId to put the product there, instead of an "add" op that would leave the empty gap behind. Never remove a gap.
 - Steps marked RAN OUT are paused until the person restocks. Don't build on them.
 - Do not touch a step that doesn't need to change.
 - Only operations are carried out. Anything your summary or consequences say will change (how often something is used, where it goes, something being removed) MUST appear as an operation, and every operation must be explained in your text. Never promise a change you did not include as an operation.
@@ -110,17 +115,20 @@ function cleanSentence(text: string): string {
 export async function proposeRoutineChange(input: ProposeInput): Promise<ProposeResult> {
   const { userId, kind } = input;
 
-  const routine = await prisma.routine.findFirst({
-    where: { userId, status: { in: ["ACTIVE", "PAUSED"] } },
-    orderBy: { createdAt: "desc" },
-    include: {
-      steps: {
-        where: { active: true },
-        include: { product: true },
-        orderBy: [{ timeOfDay: "asc" }, { order: "asc" }],
-      },
+  const stepsInclude = {
+    steps: {
+      where: { active: true },
+      include: { product: true },
+      orderBy: [{ timeOfDay: "asc" as const }, { order: "asc" as const }],
     },
-  });
+  };
+  const routine = input.routineId
+    ? await prisma.routine.findFirst({ where: { id: input.routineId, userId, status: { not: "ARCHIVED" } }, include: stepsInclude })
+    : await prisma.routine.findFirst({
+        where: { userId, status: { in: ["ACTIVE", "PAUSED"] } },
+        orderBy: { createdAt: "desc" },
+        include: stepsInclude,
+      });
   if (!routine) return { ok: false, reason: "no_routine" };
 
   const shelf = await prisma.shelfItem.findMany({ where: { userId }, include: { product: true } });
@@ -159,6 +167,11 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
   }
 
   const subject = input.subjectProductIds[0];
+
+  const fillStep = input.fillStepId ? steps.find((s) => s.id === input.fillStepId && !s.productId) : undefined;
+  if (input.fillStepId && !fillStep) {
+    return { ok: false, reason: "not_possible", message: "That suggestion has already been handled." };
+  }
 
   // ── A prescribed product with no ingredient list can't be checked. It goes
   // in exactly as the person entered it, and we say so.
@@ -242,6 +255,9 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
   const replacedBlock = replacedSteps.length
     ? `\n\nThe product that ran out is used in these steps (swap each one): ${replacedSteps.map((s) => s.id).join(", ")}`
     : "";
+  const fillBlock = fillStep
+    ? `\n\nThe person is filling this unfilled gap with the product: stepId ${fillStep.id}. Use a "swap" op on that stepId so the product takes the gap's place.`
+    : "";
   const directions = input.directions?.trim()
     ? `\n\nTheir prescriber's directions, in the person's words: "${input.directions.trim().slice(0, 600)}"`
     : "";
@@ -250,7 +266,7 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
 What happened: ${input.trigger}
 
 The product(s) this is about:
-${subjectBlock}${replacedBlock}${directions}
+${subjectBlock}${replacedBlock}${fillBlock}${directions}
 
 ${profile ? profile + "\n\n" : ""}Current routine:
 ${routineBlock || "(no steps)"}
@@ -288,6 +304,12 @@ ${shelfBlock || "(none)"}`;
         ops.push({ op: "swap", stepId: s.id, productId: subject, frequencyPerWeek: null, rationale: "Takes the place of the product you ran out of." });
       }
     }
+  }
+
+  // Filling a gap must put the product into that gap, whatever else the agent said.
+  if (fillStep && subject && !ops.some((o) => o.op === "swap" && o.stepId === fillStep.id)) {
+    ops = ops.filter((o) => !("stepId" in o && o.stepId === fillStep.id) && !(o.op === "add" && o.productId === subject));
+    ops.unshift({ op: "swap", stepId: fillStep.id, productId: subject, frequencyPerWeek: null, rationale: "Fills the step we suggested." });
   }
 
   if (kind === "RECHECK" && ops.length === 0) {

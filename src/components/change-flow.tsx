@@ -13,6 +13,10 @@ export type ChangeMode =
   | { kind: "use"; productId: string; label: string }
   /** Something ran out: pick what takes its place. */
   | { kind: "swap"; replacesProductId: string; label: string }
+  /** A new product the person wants in the routine. */
+  | { kind: "add" }
+  /** A product chosen for one of the routine's suggested gaps (a Pro Tip). `draft`: the routine is still being reviewed. */
+  | { kind: "fill"; routineId: string; stepId: string; description: string; draft: boolean }
   /** A prescribed product, which the routine adapts around. */
   | { kind: "prescribed" }
   /** A change that is already waiting for the person's OK. */
@@ -42,6 +46,8 @@ const DIFF_MARK: Record<"add" | "remove" | "change", { sym: string; cls: string;
 
 const TITLE: Record<ChangeMode["kind"], string> = {
   use: "Use this in my routine",
+  add: "Add a product",
+  fill: "Add the product you chose",
   swap: "Pick a replacement",
   prescribed: "Add a prescribed product",
   review: "A change for your routine",
@@ -117,8 +123,9 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function submitSwap() {
-    if (mode.kind !== "swap") return;
+  /** A product that may not be on the shelf yet: put it there, look it up, then work out the change. */
+  async function submitNew() {
+    if (mode.kind !== "swap" && mode.kind !== "add" && mode.kind !== "fill") return;
     if (!entry.brand.trim() || !entry.name.trim()) {
       setError("Enter the brand and the product name.");
       return;
@@ -127,9 +134,15 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
     setPhase("working");
     try {
       const shelf = await postJson("/api/shelf", { brand: entry.brand, name: entry.name, productId: entry.productId, lookup: true });
-      await propose({ kind: "SWAP", productId: shelf.productId, replacesProductId: mode.replacesProductId });
+      await propose(
+        mode.kind === "swap"
+          ? { kind: "SWAP", productId: shelf.productId, replacesProductId: mode.replacesProductId }
+          : mode.kind === "fill"
+            ? { kind: "USE_PRODUCT", productId: shelf.productId, routineId: mode.routineId, fillStepId: mode.stepId }
+            : { kind: "USE_PRODUCT", productId: shelf.productId }
+      );
     } catch (err) {
-      fail(err, submitSwap);
+      fail(err, submitNew);
     }
   }
 
@@ -188,7 +201,9 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
     onClose();
   }
 
-  const lines = mode.kind === "swap" ? WORKING_LINES_NEW_PRODUCT : WORKING_LINES;
+  const isNewProduct = mode.kind === "swap" || mode.kind === "add" || mode.kind === "fill";
+  const isDraft = mode.kind === "fill" && mode.draft;
+  const lines = isNewProduct ? WORKING_LINES_NEW_PRODUCT : WORKING_LINES;
 
   return (
     <div className="modal-scrim" onClick={() => !busyNow && close()}>
@@ -214,6 +229,17 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
               <p className="sub">
                 You ran out of <b>{mode.label}</b>. Type the product that takes its place. We&rsquo;ll show you exactly what
                 would change before anything does.
+              </p>
+            ) : mode.kind === "fill" ? (
+              <div className="callout c-sky">
+                <p className="eyebrow">What we suggested</p>
+                <p className="text-[20px] font-bold">{mode.description}</p>
+                <p className="note">Type the product you picked. We&rsquo;ll check it against your routine before anything is added.</p>
+              </div>
+            ) : mode.kind === "add" ? (
+              <p className="sub">
+                Type the product you want to add. We&rsquo;ll look up what&rsquo;s in it and show you exactly what would change
+                before anything does.
               </p>
             ) : (
               <p className="sub">
@@ -244,10 +270,10 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
             <button
               type="button"
               disabled={busy}
-              onClick={mode.kind === "swap" ? submitSwap : submitPrescribed}
+              onClick={isNewProduct ? submitNew : submitPrescribed}
               className="btn btn-block"
             >
-              {busy ? "Adding…" : mode.kind === "swap" ? "Check it against my routine" : "Continue"}
+              {busy ? "Adding…" : isNewProduct ? "Check it against my routine" : "Continue"}
             </button>
           </>
         )}
@@ -366,7 +392,9 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
                   );
                 })}
               </ul>
-              <p className="note">Today&rsquo;s ticks stay as they are.</p>
+              <p className="note">
+                {isDraft ? "This goes into the routine you're reviewing. It starts when you approve that routine." : "Today\u2019s ticks stay as they are."}
+              </p>
             </div>
 
             <div className="flex flex-col gap-3">
@@ -383,15 +411,21 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
         {phase === "done" && (
           <>
             <div className="callout c-mint">
-              <h2>✓ Your routine is updated</h2>
-              <p>The change is made. Your Today list already reflects it.</p>
+              <h2>{isDraft ? "✓ Added to the routine you're reviewing" : "✓ Your routine is updated"}</h2>
+              <p>
+                {isDraft
+                  ? "It starts once you approve that routine. Until then it isn't part of your daily list."
+                  : "The change is made. Your Today list already reflects it."}
+              </p>
             </div>
             <div className="flex flex-col gap-3">
-              <Link href="/routine" onClick={close} className="btn btn-block">
-                See my routine
-              </Link>
-              <button type="button" onClick={close} className="btn btn-2 btn-block">
-                Done
+              {mode.kind !== "fill" && (
+                <Link href="/routine" onClick={close} className="btn btn-block">
+                  See my routine
+                </Link>
+              )}
+              <button type="button" onClick={close} className={`btn btn-block ${mode.kind !== "fill" ? "btn-2" : ""}`}>
+                {isDraft ? "Back to the routine" : "Done"}
               </button>
             </div>
           </>

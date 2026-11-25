@@ -12,7 +12,7 @@ export default async function ShelfPage() {
   const session = await auth();
   const userId = session!.user.id;
 
-  const [items, routine, intake] = await Promise.all([
+  const [items, routine, intake, draft] = await Promise.all([
     prisma.shelfItem.findMany({
       where: { userId },
       orderBy: { addedAt: "asc" },
@@ -30,7 +30,14 @@ export default async function ShelfPage() {
       },
     }),
     prisma.intakeResponse.findFirst({ where: { userId }, select: { id: true } }),
+    // A newer version waiting for review: products in it aren't part of the routine in use yet.
+    prisma.routine.findFirst({
+      where: { userId, status: "DRAFT" },
+      orderBy: { createdAt: "desc" },
+      select: { steps: { where: { active: true, productId: { not: null } }, select: { productId: true } } },
+    }),
   ]);
+  const inDraft = new Set(draft?.steps.map((s) => s.productId) ?? []);
 
   if (items.length === 0) {
     return (
@@ -66,6 +73,7 @@ export default async function ShelfPage() {
       ranOut: item.status === "RAN_OUT",
       prescribed: item.prescribed,
       uses,
+      inWaitingDraft: uses.length === 0 && inDraft.has(item.productId),
       ingredients: source
         ? {
             text: source.ingredientsInci,

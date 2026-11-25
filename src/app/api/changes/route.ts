@@ -25,6 +25,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Say which product you ran out of." }, { status: 400 });
   }
 
+  const routineId = typeof body?.routineId === "string" ? body.routineId : undefined;
+  const fillStepId = typeof body?.fillStepId === "string" ? body.fillStepId : undefined;
+  const fillStep = fillStepId
+    ? await prisma.routineStep.findFirst({
+        where: { id: fillStepId, active: true, productId: null, routine: { userId } },
+        select: { suggestedDescription: true },
+      })
+    : null;
+  if (fillStepId && !fillStep) {
+    return NextResponse.json({ error: "That suggestion has already been handled." }, { status: 400 });
+  }
+
   const ids = [productId, ...(replacesProductId ? [replacesProductId] : [])];
   const products = await prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, brand: true, name: true } });
   const label = (id: string) => {
@@ -33,8 +45,10 @@ export async function POST(req: Request) {
   };
 
   const trigger =
-    kind === "USE_PRODUCT"
-      ? `You chose to use ${label(productId)} in your routine.`
+    kind === "USE_PRODUCT" && fillStep
+      ? `You chose ${label(productId)} for the suggestion "${fillStep.suggestedDescription ?? "a product to add"}".`
+      : kind === "USE_PRODUCT"
+        ? `You chose to use ${label(productId)} in your routine.`
       : kind === "PRESCRIBED"
         ? `You added ${label(productId)}, which was prescribed to you.`
         : `You ran out of ${label(replacesProductId!)} and picked ${label(productId)} instead.`;
@@ -50,6 +64,8 @@ export async function POST(req: Request) {
     trigger,
     subjectProductIds: [productId],
     replacesProductId,
+    routineId,
+    fillStepId,
     directions: typeof body?.directions === "string" ? body.directions.slice(0, 600) : null,
     usage: periods.length > 0 ? { periods, frequencyPerWeek: Number.isInteger(freq) && freq >= 1 && freq <= 7 ? freq : 7 } : undefined,
   };

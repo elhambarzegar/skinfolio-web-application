@@ -40,7 +40,7 @@ export async function applyChange(userId: string, changeId: string): Promise<App
   }
 
   const routine = await prisma.routine.findFirst({
-    where: { id: change.routineId, userId, status: { in: ["ACTIVE", "PAUSED"] } },
+    where: { id: change.routineId, userId, status: { in: ["DRAFT", "ACTIVE", "PAUSED"] } },
     include: { steps: { where: { active: true } } },
   });
 
@@ -77,6 +77,14 @@ export async function applyChange(userId: string, changeId: string): Promise<App
       if (op.op === "frequency") {
         await tx.routineStep.update({ where: { id: op.stepId }, data: { frequencyPerWeek: op.frequencyPerWeek } });
       } else if (op.op === "swap") {
+        // Taking a gap's place settles the suggestion (and the Pro Tip that asked for it).
+        const wasGap = stepCtx.find((s) => s.id === op.stepId)?.productId === null;
+        if (wasGap) {
+          await tx.proTip.updateMany({
+            where: { primaryStepId: op.stepId, status: "PENDING", actionType: "ADD" },
+            data: { status: "ACCEPTED", respondedAt: new Date() },
+          });
+        }
         await tx.routineStep.update({
           where: { id: op.stepId },
           data: {
@@ -85,6 +93,7 @@ export async function applyChange(userId: string, changeId: string): Promise<App
             proposal: "KEEP",
             proposalReason: null,
             rationale: op.rationale,
+            ...(wasGap ? { suggestedCategory: null, suggestedDescription: null } : {}),
             ...(op.frequencyPerWeek ? { frequencyPerWeek: op.frequencyPerWeek } : {}),
             ...approved,
           },
