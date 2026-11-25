@@ -30,6 +30,7 @@ model User {
   intakeResponses IntakeResponse[]
   shelfItems      ShelfItem[]
   routineChanges  RoutineChange[]
+  photoReports    ProductSource[] @relation("PhotoReporter")
   routines        Routine[]
   checkIns        CheckIn[]
   stepLogs        StepLog[]
@@ -109,6 +110,8 @@ enum SourceOrigin {
   RETAILER
   WEB_SEARCH
   USER_PHOTO
+  /// The same list, reported from their own label photos by several different people.
+  COMMUNITY
 }
 
 enum DatePrecision {
@@ -148,6 +151,12 @@ model ProductSource {
   // Set when this is one person's own photo of the label: it belongs to their
   // shelf item, never to the shared library.
   photoForShelfItem     ShelfItem?    @relation("ShelfPhotoSource")
+  // For a label photo: the account that took it. Used only to count how many
+  // different people agree; never shown. If the account is deleted the report stops counting.
+  reporterId            String?
+  reporter              User?         @relation("PhotoReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([productId, origin])
 }
 
 // --- Routines ---------------------------------------------------------------

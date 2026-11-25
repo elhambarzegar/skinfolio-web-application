@@ -186,7 +186,9 @@ function ShelfCard({
               <p className="text-[19px] font-bold">
                 {ing.fromPhoto
                   ? `From Your Photo · taken ${formatDate(ing.date)}`
-                  : `From App Library · from ${ORIGIN_LABEL[ing.origin] ?? "the web"}, ${formatDate(ing.date)}`}
+                  : ing.origin === "COMMUNITY"
+                    ? `From App Library · confirmed by several people's photos, ${formatDate(ing.date)}`
+                    : `From App Library · from ${ORIGIN_LABEL[ing.origin] ?? "the web"}, ${formatDate(ing.date)}`}
               </p>
               {!ing.fromPhoto && ing.bucket === "low" && (
                 <p className="note">We couldn&rsquo;t confirm this list is current. A photo of your bottle makes it exact.</p>

@@ -1,4 +1,4 @@
-export type AuthorityTier = "user_verified" | "brand_site" | "structured_db" | "retailer" | "other";
+export type AuthorityTier = "user_verified" | "community" | "brand_site" | "structured_db" | "retailer" | "other";
 export type ExtractionTier = "structured" | "photo_ocr" | "labeled" | "inferred";
 export type DatePrecisionTier = "EXACT" | "MONTH" | "YEAR" | "UNKNOWN";
 
@@ -7,6 +7,8 @@ const AUTHORITY_POINTS: Record<AuthorityTier, number> = {
   // matching the wrong formulation/region variant, which every web source
   // above carries.
   user_verified: 40,
+  // Several different people read the same list off their own bottles.
+  community: 40,
   brand_site: 40,
   structured_db: 30,
   retailer: 25,
