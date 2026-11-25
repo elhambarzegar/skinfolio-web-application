@@ -88,7 +88,7 @@ PRESCRIBED: a doctor or other professional prescribed this product. Do not quest
 
 SWAP: a new product takes the place of one that ran out. Use a "swap" op for each step of the product that ran out (the step ids are given). Check the new product against the rest of the routine and make any needed adjustments.
 
-RECHECK: something changed about a product already in the routine (for example the person photographed their own bottle, so its real ingredients are now known where they weren't before). Look at the whole routine again with that new information, exactly as you would if you were deciding where this product belongs from scratch: overlapping actives (two retinoids, a retinoid with exfoliating acids, several actives in one night), timing rules, and sun protection. Propose the changes that are needed and nothing else. If the product that changed is prescribed, never change how it is used: adjust the OTHER products around it. If, after really checking, the routine still works as it is, return an empty ops list, an empty consequences list and the summary "Nothing needs to change."
+RECHECK: something changed. It may be about a product already in the routine (for example the person photographed their own bottle, so its real ingredients are now known where they weren't before). Look at the whole routine again with that new information, exactly as you would if you were deciding where this product belongs from scratch: overlapping actives (two retinoids, a retinoid with exfoliating acids, several actives in one night), timing rules, and sun protection. Propose the changes that are needed and nothing else. If the product that changed is prescribed, never change how it is used: adjust the OTHER products around it. It can also be that the person redid their details (products they own, skin concerns): then look at the shelf products that are not in the routine and add the ones that belong (an "add" op, or a "swap" op onto a suggested gap they fit), and weigh the concerns. Products they said they no longer have are already gone from the routine; don't mention them. If, after really checking, the routine still works as it is, return an empty ops list, an empty consequences list and the summary "Nothing needs to change."
 
 ## Their profile
 
@@ -234,8 +234,9 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
     )
     .join("\n");
 
-  const subjectBlock = input.subjectProductIds
+  const subjectBlock = (input.subjectProductIds.length === 0 ? ["none"] : input.subjectProductIds)
     .map((id) => {
+      if (id === "none") return "- (none in particular: the person's details changed)";
       const item = shelfById.get(id)!;
       return `- productId: ${id} | ${item.product.brand} — ${item.product.name} (${item.product.step})${item.prescribed ? " [prescribed]" : ""} | ingredients: ${ingredientNote(views.get(id))}`;
     })

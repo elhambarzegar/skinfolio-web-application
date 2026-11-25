@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { resolveProductSource } from "@/lib/productLookup";
+import { lookupMissingSources } from "@/lib/productLookup";
 import { resolveOwnedProducts, type OwnedProductInput } from "@/lib/productLookup/resolveOwnedProducts";
 import { addToShelf } from "@/lib/shelf";
+import { renumberRoutine } from "@/lib/routine/steps";
+import { proposeRoutineChange } from "@/lib/routine/proposeChange";
+import { describeIntakeChange, detailsChanged, diffShelf } from "@/lib/intakeSync";
 import { EXPERIENCE_OPTIONS, PRIORITY_OPTIONS, COMPLEXITY_OPTIONS } from "@/lib/intakeProfile";
 
 const EXPERIENCE_LEVELS = EXPERIENCE_OPTIONS.map((o) => o.value);
@@ -61,18 +64,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "You need to acknowledge the safety agreement to continue." }, { status: 400 });
   }
 
-  let newProductIds: string[] = [];
+  const userId = session.user.id;
 
-  const intake = await prisma.$transaction(async (tx) => {
+  // What they had before, to tell what this save changes.
+  const [previous, shelfBefore] = await Promise.all([
+    prisma.intakeResponse.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { concerns: true, experienceLevel: true, priority: true, complexityPreference: true },
+    }),
+    prisma.shelfItem.findMany({ where: { userId }, include: { product: { select: { brand: true, name: true } } } }),
+  ]);
+
+  const outcome = await prisma.$transaction(async (tx) => {
     const resolved = await resolveOwnedProducts(tx, ownedProducts);
-    const productIds = resolved.productIds;
-    newProductIds = resolved.newProductIds;
+    const productIds = [...new Set(resolved.productIds)];
 
-    await addToShelf(tx, session.user.id, productIds);
-
-    return tx.intakeResponse.create({
+    const intake = await tx.intakeResponse.create({
       data: {
-        userId: session.user.id,
+        userId,
         concerns,
         questionnaire,
         experienceLevel,
@@ -82,13 +92,80 @@ export async function POST(req: Request) {
         ownedProducts: { connect: productIds.map((id) => ({ id })) },
       },
     });
+
+    // The list they gave is their shelf. Products already there are left exactly as they are
+    // (a product marked as run out stays that way); new ones are added; ones left out come off.
+    await addToShelf(tx, userId, productIds, { reactivate: false });
+    const { added, removed } = diffShelf(shelfBefore.map((i) => i.productId), productIds);
+
+    const routines = await tx.routine.findMany({
+      where: { userId, status: { in: ["DRAFT", "ACTIVE", "PAUSED"] } },
+      select: { id: true, status: true },
+    });
+    const hasLiveRoutine = routines.some((r) => r.status !== "DRAFT");
+
+    // Saying you no longer have a product is the decision: its steps leave every routine,
+    // and changes that were worked out with it in the picture no longer fit.
+    let stepsRemoved = 0;
+    if (removed.length > 0) {
+      await tx.shelfItem.deleteMany({ where: { userId, productId: { in: removed } } });
+      const res = await tx.routineStep.updateMany({
+        where: { productId: { in: removed }, active: true, routineId: { in: routines.map((r) => r.id) } },
+        data: { active: false },
+      });
+      stepsRemoved = res.count;
+      for (const r of routines) await renumberRoutine(tx, r.id);
+      await tx.routineChange.updateMany({ where: { userId, status: "PENDING" }, data: { status: "STALE" } });
+    }
+
+    const details = detailsChanged(previous, { concerns, experienceLevel, priority, complexityPreference });
+    const changed = added.length > 0 || removed.length > 0 || details.concerns || details.profile;
+
+    // A routine still being reviewed, with nothing in use yet, was built from the old details.
+    // Rebuilding is the right way forward, so it is set aside.
+    let draftSetAside = false;
+    if (changed && !hasLiveRoutine && routines.some((r) => r.status === "DRAFT")) {
+      await tx.routine.updateMany({ where: { userId, status: "DRAFT" }, data: { status: "ARCHIVED" } });
+      draftSetAside = true;
+    }
+
+    return { intakeId: intake.id, productIds, added, removed, stepsRemoved, details, changed, hasLiveRoutine, draftSetAside };
   });
 
-  // Best-effort: look up ingredient data for any product we haven't seen
-  // before. A lookup failure (no match, no API key, network error) leaves
-  // the product without a source — that's the honest "no data yet" state,
-  // not a reason to fail the intake submission.
-  await Promise.allSettled(newProductIds.map((id) => resolveProductSource(id)));
+  // Best-effort: look up ingredient data for products we don't have it for yet (including ones
+  // an earlier lookup missed). A lookup failure leaves the product without a source, which is the
+  // honest "no data yet" state, not a reason to fail the save.
+  await lookupMissingSources(outcome.productIds);
 
-  return NextResponse.json({ id: intake.id });
+  const nameOf = (id: string, fallback: string) => shelfBefore.find((i) => i.productId === id)?.product.name ?? fallback;
+  const removedNames = outcome.removed.map((id) => nameOf(id, "a product"));
+  const addedProducts = outcome.added.length
+    ? await prisma.product.findMany({ where: { id: { in: outcome.added } }, select: { id: true, name: true } })
+    : [];
+  const addedNames = addedProducts.map((p) => p.name);
+
+  // Every change checks the routine: with the new details, look at the routine in use again in the
+  // background. If something should change it waits for their approval on Today.
+  const trigger = describeIntakeChange({ addedNames, removedNames, concerns: outcome.details.concerns, profile: outcome.details.profile });
+  const checking = outcome.hasLiveRoutine && !!trigger;
+  if (checking && trigger) {
+    after(async () => {
+      try {
+        const result = await proposeRoutineChange({ userId, kind: "RECHECK", trigger, subjectProductIds: outcome.added });
+        if (!result.ok) console.error("[intake] routine re-check did not complete:", result);
+      } catch (err) {
+        console.error("[intake] routine re-check failed:", err);
+      }
+    });
+  }
+
+  return NextResponse.json({
+    id: outcome.intakeId,
+    updated: shelfBefore.length > 0 || !!previous,
+    addedNames,
+    removedNames,
+    routineStepsRemoved: outcome.stepsRemoved,
+    draftSetAside: outcome.draftSetAside,
+    checking,
+  });
 }

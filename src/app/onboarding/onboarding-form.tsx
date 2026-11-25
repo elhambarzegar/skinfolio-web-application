@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CONCERN_OPTIONS } from "@/lib/concerns";
 import {
@@ -14,6 +15,26 @@ import {
 import { ProductSearchRow, type OwnedProductEntry } from "@/components/product-search-row";
 
 const TOTAL_STEPS = 8;
+
+/** What they gave last time, when redoing the intake. */
+export type OnboardingInitial = {
+  concerns: string[];
+  questionnaire: string;
+  experienceLevel: ExperienceLevel | null;
+  priority: Priority | null;
+  complexityPreference: ComplexityPreference | null;
+  safetyAcknowledged: boolean;
+  products: { brand: string; name: string; productId: string }[];
+};
+
+type SaveResult = {
+  updated: boolean;
+  addedNames: string[];
+  removedNames: string[];
+  routineStepsRemoved: number;
+  draftSetAside: boolean;
+  checking: boolean;
+};
 
 function RadioList<T extends string>({
   options,
@@ -48,21 +69,28 @@ function RadioList<T extends string>({
   );
 }
 
-export function OnboardingForm() {
+export function OnboardingForm({ initial }: { initial: OnboardingInitial | null }) {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
-  const [concerns, setConcerns] = useState<string[]>([]);
-  const [questionnaire, setQuestionnaire] = useState("");
-  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(null);
-  const [priority, setPriority] = useState<Priority | null>(null);
-  const [complexityPreference, setComplexityPreference] = useState<ComplexityPreference | null>(null);
-  const nextRowId = useRef(1);
-  const [ownedProducts, setOwnedProducts] = useState<(OwnedProductEntry & { rowId: number })[]>([
-    { rowId: 0, brand: "", name: "", productId: null },
-  ]);
+  // Already agreed to the safety note once: start at the questions.
+  const [step, setStep] = useState(initial?.safetyAcknowledged ? 2 : 1);
+  const [safetyAcknowledged, setSafetyAcknowledged] = useState(initial?.safetyAcknowledged ?? false);
+  const [concerns, setConcerns] = useState<string[]>(initial?.concerns ?? []);
+  const [questionnaire, setQuestionnaire] = useState(initial?.questionnaire ?? "");
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(initial?.experienceLevel ?? null);
+  const [priority, setPriority] = useState<Priority | null>(initial?.priority ?? null);
+  const [complexityPreference, setComplexityPreference] = useState<ComplexityPreference | null>(
+    initial?.complexityPreference ?? null
+  );
+  const nextRowId = useRef(initial?.products.length || 1);
+  const [ownedProducts, setOwnedProducts] = useState<(OwnedProductEntry & { rowId: number })[]>(
+    initial && initial.products.length > 0
+      ? initial.products.map((p, i) => ({ rowId: i, ...p }))
+      : [{ rowId: 0, brand: "", name: "", productId: null }]
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [saved, setSaved] = useState<SaveResult | null>(null);
+  const isUpdate = !!initial;
 
   function toggleConcern(concern: string) {
     setConcerns((prev) =>
@@ -149,6 +177,13 @@ export function OnboardingForm() {
         return;
       }
 
+      // Redoing it: say what changed. The first time, carry straight on.
+      if (data.updated) {
+        setSaved(data);
+        setSubmitting(false);
+        router.refresh();
+        return;
+      }
       router.push("/today");
       router.refresh();
     } catch {
@@ -162,8 +197,52 @@ export function OnboardingForm() {
   const complexityLabel = COMPLEXITY_OPTIONS.find((o) => o.value === complexityPreference)?.label;
   const listedProducts = ownedProducts.filter((p) => p.brand.trim() && p.name.trim());
 
+  if (saved) {
+    const changedShelf = saved.addedNames.length > 0 || saved.removedNames.length > 0;
+    return (
+      <div className="mt-5 flex w-full flex-col gap-5">
+        <h1 className="page-title">Saved</h1>
+        <div className="callout c-mint">
+          <h2>✓ Your details are updated</h2>
+          {changedShelf ? (
+            <ul className="flex flex-col gap-2 text-[20px]">
+              {saved.addedNames.length > 0 && (
+                <li>
+                  <b>Added to your shelf:</b> {saved.addedNames.join(", ")}
+                </li>
+              )}
+              {saved.removedNames.length > 0 && (
+                <li>
+                  <b>Taken off your shelf:</b> {saved.removedNames.join(", ")}
+                  {saved.routineStepsRemoved > 0 ? `. Its steps are out of your routine too.` : "."}
+                </li>
+              )}
+            </ul>
+          ) : (
+            <p>Your products are the same as before.</p>
+          )}
+        </div>
+        {saved.draftSetAside && (
+          <p className="callout c-sun text-[20px]">
+            The routine you were reviewing no longer matched your details, so it was set aside. You can build a new one on Today.
+          </p>
+        )}
+        {saved.checking && (
+          <p className="callout c-sky text-[20px]">
+            We&rsquo;re checking your routine against these changes. If something should change, we&rsquo;ll ask you first. It
+            appears on Today in about a minute.
+          </p>
+        )}
+        <Link href="/today" className="btn btn-block">
+          Go to Today
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-5 w-full">
+      {isUpdate && <p className="eyebrow">Updating your details</p>}
       <p className="eyebrow">
         Step {step} of {TOTAL_STEPS}
       </p>
@@ -294,7 +373,9 @@ export function OnboardingForm() {
         <div>
           <h1 className="page-title">What do you already use?</h1>
           <p className="sub mt-2">
-            Optional. Add anything currently in your routine — we&rsquo;ll check it against the rest.
+            {isUpdate
+              ? "This is your shelf. Add what's new and remove what you no longer have."
+              : "Optional. Add anything currently in your routine — we\u2019ll check it against the rest."}
           </p>
           <div className="mt-6 flex flex-col gap-5">
             {ownedProducts.map((product) => (
@@ -316,7 +397,7 @@ export function OnboardingForm() {
       {step === 8 && (
         <div>
           <h1 className="page-title">Review</h1>
-          <p className="sub mt-2">This is what we&rsquo;ll build your routine around.</p>
+          <p className="sub mt-2">{isUpdate ? "This is what we\u2019ll check your routine against." : "This is what we\u2019ll build your routine around."}</p>
 
           <div className="mt-6 flex flex-col gap-4">
             <section className="card">
@@ -381,7 +462,7 @@ export function OnboardingForm() {
           </button>
         ) : (
           <button type="button" onClick={handleSubmit} disabled={submitting} className="btn flex-1">
-            {submitting ? "Saving…" : "Save and continue"}
+            {submitting ? "Saving…" : isUpdate ? "Save changes" : "Save and continue"}
           </button>
         )}
       </div>

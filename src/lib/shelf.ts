@@ -49,17 +49,24 @@ export async function productViewsFor(userId: string, productIds: string[]): Pro
   );
 }
 
-/** Puts products on the person's shelf. Ones already there are left as they are, except that a product they'd run out of is back in use. */
+/**
+ * Puts products on the person's shelf. Ones already there are left as they
+ * are, except that by default a product they'd run out of is back in use
+ * (they've just added it again). Pass `reactivate: false` to leave existing
+ * items completely alone, e.g. when a redone intake merely lists what's there.
+ */
 export async function addToShelf(
   tx: Pick<typeof prisma, "shelfItem">,
   userId: string,
-  productIds: string[]
+  productIds: string[],
+  options: { reactivate?: boolean } = {}
 ): Promise<void> {
+  const reactivate = options.reactivate ?? true;
   for (const productId of new Set(productIds)) {
     await tx.shelfItem.upsert({
       where: { userId_productId: { userId, productId } },
       create: { userId, productId },
-      update: { status: "ACTIVE", ranOutAt: null },
+      update: reactivate ? { status: "ACTIVE", ranOutAt: null } : {},
     });
   }
 }
