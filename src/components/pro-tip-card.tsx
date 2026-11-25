@@ -20,6 +20,8 @@ export type ProTipView = {
   shopQuery: string | null;
   // The new frequency a CHANGE tip proposes, when it proposes one.
   alternativeFrequency: number | null;
+  // The product this tip is about, when it is about one the person has ("About your …").
+  stepProductName: string | null;
 };
 
 const ACTION_LABEL: Record<ProTipView["actionType"], string> = {
@@ -82,11 +84,13 @@ export function ProTipCard({
     status === "ACCEPTED"
       ? kind === "shop"
         ? "✓ Added to your routine"
-        : "✓ Done"
+        : kind === "swap"
+          ? "✓ Swapped in"
+          : "✓ Done"
       : kind === "shop"
         ? "Skipped"
-        : kind === "advice"
-          ? "Dismissed"
+        : kind === "swap"
+          ? "Kept what you have"
           : "Left as it was";
 
   return (
@@ -95,7 +99,15 @@ export function ProTipCard({
         <span className={`badge ${ACTION_BADGE[tip.actionType]}`}>{ACTION_LABEL[tip.actionType]}</span>
       </div>
 
+      {tip.stepProductName && <p className="eyebrow">About your {tip.stepProductName}</p>}
+
       <p className="text-[20px] leading-snug">{tip.summary}</p>
+
+      {tip.shopQuery && (kind === "shop" || kind === "swap") && status === "PENDING" && (
+        <p className="text-[19px]">
+          <b>Look for:</b> {tip.shopQuery}
+        </p>
+      )}
 
       {tip.ruleLabel && (
         <p className="note">
@@ -110,7 +122,7 @@ export function ProTipCard({
         </p>
       )}
 
-      {tip.shopQuery && (kind === "shop" || kind === "advice") && status === "PENDING" && (
+      {tip.shopQuery && (kind === "shop" || kind === "swap") && status === "PENDING" && (
         <div className="flex flex-col gap-2">
           <p className="eyebrow">Where to look</p>
           <div className="flex flex-wrap gap-2">
@@ -143,10 +155,18 @@ export function ProTipCard({
             </button>
           </div>
         </div>
-      ) : kind === "advice" ? (
-        <button type="button" disabled={busy} onClick={() => respond("reject")} className="btn btn-2">
-          Dismiss
-        </button>
+      ) : kind === "swap" ? (
+        <div className="flex flex-col gap-2">
+          <p className="note">Pick the product first. We&rsquo;ll check it against your routine before swapping it in.</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" disabled={busy} onClick={() => onAddProduct?.(tip)} className="btn flex-1">
+              I have one — swap it in
+            </button>
+            <button type="button" disabled={busy} onClick={() => respond("reject")} className="btn btn-2 flex-1">
+              Keep what I have
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row">
           <button type="button" disabled={busy} onClick={() => respond("accept")} className="btn flex-1">

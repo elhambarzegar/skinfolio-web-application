@@ -16,7 +16,7 @@ export type ChangeMode =
   /** A new product the person wants in the routine. */
   | { kind: "add" }
   /** A product chosen for one of the routine's suggested gaps (a Pro Tip). `draft`: the routine is still being reviewed. */
-  | { kind: "fill"; routineId: string; stepId: string; description: string; draft: boolean }
+  | { kind: "fill"; routineId: string; stepId: string; description: string; draft: boolean; replacing: string | null }
   /** A prescribed product, which the routine adapts around. */
   | { kind: "prescribed" }
   /** A change that is already waiting for the person's OK. */
@@ -215,7 +215,9 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-head">
-          <h2 id="change-title">{phase === "done" ? "Done" : TITLE[mode.kind]}</h2>
+          <h2 id="change-title">
+            {phase === "done" ? "Done" : mode.kind === "fill" && mode.replacing ? "Swap in the product you chose" : TITLE[mode.kind]}
+          </h2>
           <button type="button" onClick={close} disabled={busyNow} aria-label="Close" className="modal-x">
             ×
           </button>
@@ -232,9 +234,17 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
               </p>
             ) : mode.kind === "fill" ? (
               <div className="callout c-sky">
+                {mode.replacing && (
+                  <>
+                    <p className="eyebrow">It would replace</p>
+                    <p className="text-[20px] font-bold">{mode.replacing}</p>
+                  </>
+                )}
                 <p className="eyebrow">What we suggested</p>
                 <p className="text-[20px] font-bold">{mode.description}</p>
-                <p className="note">Type the product you picked. We&rsquo;ll check it against your routine before anything is added.</p>
+                <p className="note">
+                  Type the product you picked. We&rsquo;ll check it against your routine before anything {mode.replacing ? "is swapped" : "is added"}.
+                </p>
               </div>
             ) : mode.kind === "add" ? (
               <p className="sub">

@@ -81,14 +81,12 @@ export async function applyChange(userId: string, changeId: string): Promise<App
       if (op.op === "frequency") {
         await tx.routineStep.update({ where: { id: op.stepId }, data: { frequencyPerWeek: op.frequencyPerWeek } });
       } else if (op.op === "swap") {
-        // Taking a gap's place settles the suggestion (and the Pro Tip that asked for it).
-        const wasGap = stepCtx.find((s) => s.id === op.stepId)?.productId === null;
-        if (wasGap) {
-          await tx.proTip.updateMany({
-            where: { primaryStepId: op.stepId, status: "PENDING", actionType: "ADD" },
-            data: { status: "ACCEPTED", respondedAt: new Date() },
-          });
-        }
+        // Taking a step's place settles the suggestion on it (and the Pro Tip that asked for it),
+        // whether the step was an empty gap or a product being swapped out.
+        await tx.proTip.updateMany({
+          where: { primaryStepId: op.stepId, status: "PENDING", actionType: { in: ["ADD", "CHANGE"] } },
+          data: { status: "ACCEPTED", respondedAt: new Date() },
+        });
         await tx.routineStep.update({
           where: { id: op.stepId },
           data: {
@@ -97,7 +95,9 @@ export async function applyChange(userId: string, changeId: string): Promise<App
             proposal: "KEEP",
             proposalReason: null,
             rationale: op.rationale,
-            ...(wasGap ? { suggestedCategory: null, suggestedDescription: null } : {}),
+            suggestedCategory: null,
+            suggestedDescription: null,
+            alternativeFrequency: null,
             ...(op.frequencyPerWeek ? { frequencyPerWeek: op.frequencyPerWeek } : {}),
             ...approved,
           },

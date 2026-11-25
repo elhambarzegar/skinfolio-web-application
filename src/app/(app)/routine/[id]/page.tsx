@@ -34,7 +34,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
       proTips: {
         // id as a tiebreaker: tips are created together, so their order must not shuffle between loads.
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        include: { primaryStep: { select: { suggestedDescription: true, alternativeFrequency: true } } },
+        include: { primaryStep: { select: { suggestedDescription: true, alternativeFrequency: true, product: { select: { name: true } } } } },
       },
     },
   });
@@ -96,6 +96,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
         ruleUrl: rule?.url ?? null,
         shopQuery: tip.primaryStep.suggestedDescription,
         alternativeFrequency: tip.primaryStep.alternativeFrequency,
+        stepProductName: tip.primaryStep.product?.name ?? null,
       };
     });
 

@@ -6,8 +6,8 @@ describe("tipKind", () => {
     expect(tipKind({ actionType: "ADD" }, { alternativeFrequency: null, suggestedDescription: "mineral SPF 30+" })).toBe("shop");
   });
 
-  it("treats a swap with no frequency change as advice only", () => {
-    expect(tipKind({ actionType: "CHANGE" }, { alternativeFrequency: null, suggestedDescription: "a gentler cleanser" })).toBe("advice");
+  it("treats a swap to a different kind of product as a swap", () => {
+    expect(tipKind({ actionType: "CHANGE" }, { alternativeFrequency: null, suggestedDescription: "a gentler cleanser" })).toBe("swap");
   });
 
   it("lets a frequency change be accepted, even with a swap suggestion beside it", () => {

@@ -84,7 +84,7 @@ export async function POST(
           error:
             kind === "shop"
               ? "Add the product you chose to accept this. Until then you can skip it."
-              : "This one is advice only, so there's nothing to accept. You can dismiss it.",
+              : "Choose the product you'll swap in to accept this. Until then you can keep what you have.",
         },
         { status: 400 }
       );

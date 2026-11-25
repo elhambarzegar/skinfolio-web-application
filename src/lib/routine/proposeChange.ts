@@ -170,8 +170,9 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
 
   const subject = input.subjectProductIds[0];
 
-  const fillStep = input.fillStepId ? steps.find((s) => s.id === input.fillStepId && !s.productId) : undefined;
-  if (input.fillStepId && !fillStep) {
+  // The step the product is meant for: an empty suggested gap, or a product it replaces.
+  const fillStep = input.fillStepId ? steps.find((s) => s.id === input.fillStepId) : undefined;
+  if (input.fillStepId && (!fillStep || fillStep.productId === subject)) {
     return { ok: false, reason: "not_possible", message: "That suggestion has already been handled." };
   }
 
@@ -255,7 +256,9 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
     ? `\n\nThe product that ran out is used in these steps (swap each one): ${replacedSteps.map((s) => s.id).join(", ")}`
     : "";
   const fillBlock = fillStep
-    ? `\n\nThe person is filling this unfilled gap with the product: stepId ${fillStep.id}. Use a "swap" op on that stepId so the product takes the gap's place.`
+    ? fillStep.productId
+      ? `\n\nThe person is swapping the product in this step for the new one: stepId ${fillStep.id}. Use a "swap" op on that stepId so the new product takes its place.`
+      : `\n\nThe person is filling this unfilled gap with the product: stepId ${fillStep.id}. Use a "swap" op on that stepId so the product takes the gap's place.`
     : "";
   const directions = input.directions?.trim()
     ? `\n\nTheir prescriber's directions, in the person's words: "${input.directions.trim().slice(0, 600)}"`
@@ -308,7 +311,7 @@ ${shelfBlock || "(none)"}`;
   // Filling a gap must put the product into that gap, whatever else the agent said.
   if (fillStep && subject && !ops.some((o) => o.op === "swap" && o.stepId === fillStep.id)) {
     ops = ops.filter((o) => !("stepId" in o && o.stepId === fillStep.id) && !(o.op === "add" && o.productId === subject));
-    ops.unshift({ op: "swap", stepId: fillStep.id, productId: subject, frequencyPerWeek: null, rationale: "Fills the step we suggested." });
+    ops.unshift({ op: "swap", stepId: fillStep.id, productId: subject, frequencyPerWeek: null, rationale: fillStep.productId ? "Takes the place of the product you swapped out." : "Fills the step we suggested." });
   }
 
   if (kind === "RECHECK" && ops.length === 0) {

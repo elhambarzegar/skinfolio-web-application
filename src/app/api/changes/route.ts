@@ -29,8 +29,8 @@ export async function POST(req: Request) {
   const fillStepId = typeof body?.fillStepId === "string" ? body.fillStepId : undefined;
   const fillStep = fillStepId
     ? await prisma.routineStep.findFirst({
-        where: { id: fillStepId, active: true, productId: null, routine: { userId } },
-        select: { suggestedDescription: true },
+        where: { id: fillStepId, active: true, routine: { userId } },
+        select: { suggestedDescription: true, product: { select: { name: true } } },
       })
     : null;
   if (fillStepId && !fillStep) {
@@ -45,8 +45,10 @@ export async function POST(req: Request) {
   };
 
   const trigger =
-    kind === "USE_PRODUCT" && fillStep
-      ? `You chose ${label(productId)} for the suggestion "${fillStep.suggestedDescription ?? "a product to add"}".`
+    kind === "USE_PRODUCT" && fillStep?.product
+      ? `You chose ${label(productId)} to replace your ${fillStep.product.name}.`
+      : kind === "USE_PRODUCT" && fillStep
+        ? `You chose ${label(productId)} for the suggestion "${fillStep.suggestedDescription ?? "a product to add"}".`
       : kind === "USE_PRODUCT"
         ? `You chose to use ${label(productId)} in your routine.`
       : kind === "PRESCRIBED"

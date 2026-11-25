@@ -417,6 +417,8 @@ export function RoutineReview({
             stepId: addingFor.stepId,
             description: addingFor.shopQuery ?? addingFor.summary,
             draft: status === "DRAFT",
+            // A swap tip is about a product they have; an addition fills an empty slot.
+            replacing: addingFor.actionType === "CHANGE" ? addingFor.stepProductName : null,
           }}
           onClose={() => setAddingFor(null)}
         />
