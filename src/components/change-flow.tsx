@@ -363,7 +363,7 @@ export function ChangeFlow({ mode, onClose }: { mode: ChangeMode; onClose: () =>
 
             {change.consequences.length > 0 && (
               <div className="flex flex-col gap-2">
-                <p className="eyebrow">What this means for you</p>
+                <p className="eyebrow">Worth knowing</p>
                 <ul className="flex flex-col gap-2">
                   {change.consequences.map((c, i) => (
                     <li key={i} className="text-[19px] leading-relaxed">

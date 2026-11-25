@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { productViewsFor } from "@/lib/shelf";
 import { pendingChanges } from "@/lib/routine/applyChange";
-import { RULE_SOURCES, stripRuleNumbers } from "@/lib/routine/policy";
+import { RULE_SOURCES } from "@/lib/routine/policy";
+import { tidyText } from "@/lib/text";
 import { RoutineReview, type RoutineStepView } from "./routine-review";
 import type { ProTipView } from "@/components/pro-tip-card";
 
@@ -56,7 +57,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
       id: step.id,
       timeOfDay: step.timeOfDay,
       order: step.order,
-      rationale: stripRuleNumbers(step.rationale),
+      rationale: tidyText(step.rationale, 130),
       ackLowConfidence: step.ackLowConfidence,
       product: step.product ? { id: step.product.id, brand: step.product.brand, name: step.product.name, step: step.product.step } : null,
       confidence: bucket
@@ -88,7 +89,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
         id: tip.id,
         routineId: routine.id,
         stepId: tip.primaryStepId,
-        summary: stripRuleNumbers(tip.summary),
+        summary: tidyText(tip.summary, 140),
         actionType: tip.actionType,
         status: tip.status,
         ruleLabel: rule?.label ?? null,
@@ -124,7 +125,7 @@ export default async function RoutinePage({ params }: { params: Promise<{ id: st
       waitingDraftId={waitingDraft?.id ?? null}
       routineId={routine.id}
       status={routine.status}
-      rationale={stripRuleNumbers(routine.rationale)}
+      rationale={tidyText(routine.rationale, 220)}
       overviewSourceLinks={overviewSourceLinks}
       steps={steps}
       proTips={proTips}

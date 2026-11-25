@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { productViewsFor, type ProductView } from "@/lib/shelf";
 import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
-import { INGREDIENT_RULES, stripRuleNumbers } from "./policy";
+import { INGREDIENT_RULES } from "./policy";
+import { tidyText } from "@/lib/text";
 import { agentErrorMessage } from "./generate";
 import {
   ChangeProposalOutput,
@@ -54,19 +55,21 @@ ${INGREDIENT_RULES}
 
 Never write a rule number, or the word "Rule", in anything you write. Write the reason in plain words.
 
-Write for a reader over 40 who is not an expert: short, warm, direct sentences, no jargon.
+## Length and tone (strict)
+
+Write only what helps the person decide or act. Short, plain, direct sentences for a reader over 40 who is not an expert. No filler, no background lessons, no reassurance, no benefits (they already chose this), no repeating what the list of changes already shows. Never explain what an ingredient is. Respect every limit below.
 
 ## What you return
 
-"summary": one sentence saying what you propose.
-"consequences": 2 to 5 short plain sentences about what this means for the person: the benefit, any risk, what to watch for (patch test, introduce slowly, expect some dryness), and anything no longer covered. Honest about trade-offs. If nothing needs to change, an empty list.
+"summary": one sentence of at most 20 words saying what you propose.
+"consequences": ONLY what affects the person's decision: a real risk, a trade-off, something they must do (like a patch test), or something that is no longer covered. At most 3 items, each one sentence of at most 20 words. If risk is "caution": exactly ONE item, the single main reason. If "conflict": at most 2 items. If "none": an empty list, unless there is one thing they must know. Never add benefits or general advice.
 "risk": "none", "caution" (works but needs care) or "conflict" (a real problem the person should understand before agreeing).
 "ops": the exact operations, in order. Each refers to real ids from the lists below:
 - {"op":"add", productId, timeOfDay, position, frequencyPerWeek, timeCostMinutes, rationale}: bring a shelf product into the routine. "position" is the step number it takes in that period; the steps from that number on move down by one. Numbering is as listed below. Keep the order Cleanse, Treat, Moisturize, Protect (sunscreen is morning only and always last). frequencyPerWeek is 7 for daily; strong actives start lower. timeCostMinutes is about 1 (2 for sunscreen).
 - {"op":"remove", stepId, reason}: take a product out of the routine.
 - {"op":"frequency", stepId, frequencyPerWeek, reason}: change how often a product is used.
 - {"op":"swap", stepId, productId, frequencyPerWeek, rationale}: a different product takes over a step's place. frequencyPerWeek is how often the new product should be used there (null to keep the step's current frequency).
-"rationale" and "reason" are one plain sentence each.
+"rationale" and "reason" are one short phrase or sentence of at most 12 words each.
 
 ## Rules for the operations
 
@@ -108,9 +111,8 @@ function ingredientNote(view: ProductView | undefined): string {
   return source.ingredientsInci;
 }
 
-function cleanSentence(text: string): string {
-  return stripRuleNumbers(text).trim();
-}
+/** How many "what you should know" lines a proposal may have, by how risky it is. */
+const MAX_CONSEQUENCES = { none: 1, caution: 1, conflict: 2 } as const;
 
 export async function proposeRoutineChange(input: ProposeInput): Promise<ProposeResult> {
   const { userId, kind } = input;
@@ -200,11 +202,7 @@ export async function proposeRoutineChange(input: ProposeInput): Promise<Propose
     const name = productCtx.get(subject)?.name ?? "this product";
     return save(input, routine.id, {
       summary: `Add ${name} to your routine exactly as you entered it.`,
-      consequences: [
-        "We can't check this product against the rest of your routine, because we don't know what's in it.",
-        "Your prescriber's directions come first. If they differ from this routine, follow them.",
-        "A photo of the label would let us check it. You can add one from your shelf at any time.",
-      ],
+      consequences: ["We can't check it: we don't know what's in it. Your prescriber's directions come first."],
       risk: "caution",
       ops: clean,
       stepCtx,
@@ -324,13 +322,16 @@ ${shelfBlock || "(none)"}`;
   }
 
   return save(input, routine.id, {
-    summary: cleanSentence(parsed.summary),
-    consequences: parsed.consequences.map(cleanSentence).filter(Boolean),
+    summary: tidyText(parsed.summary, 130),
+    consequences: parsed.consequences
+      .map((c) => tidyText(c, 130))
+      .filter(Boolean)
+      .slice(0, MAX_CONSEQUENCES[parsed.risk]),
     risk: parsed.risk,
     ops: ops.map((o) => ({
       ...o,
-      ...("rationale" in o ? { rationale: cleanSentence(o.rationale) } : {}),
-      ...("reason" in o ? { reason: cleanSentence(o.reason) } : {}),
+      ...("rationale" in o ? { rationale: tidyText(o.rationale, 90) } : {}),
+      ...("reason" in o ? { reason: tidyText(o.reason, 90) } : {}),
     })) as ChangeOp[],
     stepCtx,
     productCtx,

@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { pickSource } from "@/lib/shelf";
+import { tidyText } from "@/lib/text";
 import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
 import { INGREDIENT_RULES, INTAKE_SAFETY_TRIGGERS, RULE_SOURCES } from "./policy";
 
@@ -90,23 +91,28 @@ If no red flag applies, build the routine using the ingredient rules policy belo
 INGREDIENT RULES POLICY (numbered 1-10):
 ${INGREDIENT_RULES}
 
+## Length and tone (strict)
+
+Write only what helps the person decide or act. Short, plain, direct sentences. No filler, no background lessons, no benefits nobody asked about, no repeating what the lists already show. Never explain what an ingredient is. Respect every word limit below.
+
 ## Never name a specific brand or product to buy
 
 You only ever work with products the person already owns. When something new would help — filling a gap, or replacing something owned with a better fit — describe what to look for in plain, shoppable terms (ingredient/type, and anything that matters like "fragrance-free" or "SPF 30+ mineral"). Never invent or name an actual brand or product — the app turns your description into shopping-site search links so the person picks the specific item themselves. This applies everywhere below.
 
 ## Output shape
 
-"overview" — 2-4 short sentences, plain language, no headers. Cover: whether their owned products are enough to form a real routine or there are real gaps/overlaps, and — grounded only in the actual ingredients present — what the routine is actually doing for their skin long-term (e.g. barrier support, anti-aging via retinoid/peptide, brightening via vitamin C/niacinamide, hydration). Do not repeat step-by-step detail here — that belongs in steps and proTips. "overviewRuleCitations" lists any rule numbers the overview's claims lean on.
+"overview" — ONE or TWO sentences, at most 30 words, plain language, no headers: whether their products are enough or what's missing, and the main thing the routine does for their skin (grounded only in the actual ingredients). Nothing else; step-by-step detail belongs in steps and proTips. "overviewRuleCitations" lists any rule numbers the overview's claims lean on.
 
 "steps" — every step in the routine, AM and PM, ordered Cleanse → Treat → Moisturize → Protect (Protect/sunscreen is AM only and always last; retinoids/actives in Treat are PM only). For EACH step:
 - productId: the real owned product's id, EXCEPT for a proposal "ADD" step, where there's no owned product yet — invent a short local token instead (e.g. "new-sunscreen"), used only to match this step to its Pro Tip.
 - ownership: "OWNED" for an owned product, "NEW" for an "ADD" step.
 - proposal: "KEEP" (settled, no action needed), "REMOVE" (this owned product should come out — redundant or conflicting with another), "ADD" (a real gap needs filling — set suggestedCategory and suggestedDescription, never a productId that refers to a real catalog item), "CHANGE" (an owned product would work better as a different frequency, and/or swapped for a different kind of product — set alternativeFrequency and/or suggestedDescription; never name what to swap to, describe it).
-- frequencyPerWeek: 7 for daily use. Strong actives (retinoids, exfoliating acids) commonly start lower for someone new to them — use judgment, explain in rationale, and only cite a rule number if the frequency claim is actually one of the 10 rules (most frequency judgment calls aren't — use null).
+- rationale: ONE sentence, at most 15 words: why this step is here or used this often. Don't restate what the product is, and don't give background.
+- frequencyPerWeek: 7 for daily use. Strong actives (retinoids, exfoliating acids) commonly start lower for someone new to them — use judgment, give the reason in the rationale, and only cite a rule number if the frequency claim is actually one of the 10 rules (most frequency judgment calls aren't — use null).
 - timeCostMinutes: a realistic rough estimate per application (typically 1 for cleanser/treatment/moisturizer, 2 for sunscreen).
-- budgetAdjustment: "NONE" unless the person's priority is minimizing spend or buying fewer/better products and you're deliberately reducing frequency ("FREQUENCY_REDUCED", explain in budgetAdjustmentReason) or leaving a step out for cost reasons despite it being useful ("DROPPED_FOR_BUDGET", explain why). Never invent a numeric budget or time cap that wasn't given to you.
+- budgetAdjustment: "NONE" unless the person's priority is minimizing spend or buying fewer/better products and you're deliberately reducing frequency ("FREQUENCY_REDUCED", reason in at most 10 words in budgetAdjustmentReason) or leaving a step out for cost reasons despite it being useful ("DROPPED_FOR_BUDGET", explain why). Never invent a numeric budget or time cap that wasn't given to you.
 
-"proTips" — real proposed changes only, nothing else. Exactly one entry for every step whose proposal is ADD, REMOVE, or CHANGE, matched by stepProductId + stepTimeOfDay to a step above — never more than one tip per step, and never give a step conflicting signals (e.g. don't describe the same step as both worth removing and worth changing). Do NOT create a tip for a step whose proposal is KEEP — an unchanged step doesn't need a decision, so it gets no tip at all. Each "summary" is exactly one plain-language sentence a person can decide on in a few seconds, describing what to look for, never a brand or product name.
+"proTips" — real proposed changes only, nothing else. Exactly one entry for every step whose proposal is ADD, REMOVE, or CHANGE, matched by stepProductId + stepTimeOfDay to a step above — never more than one tip per step, and never give a step conflicting signals (e.g. don't describe the same step as both worth removing and worth changing). Do NOT create a tip for a step whose proposal is KEEP — an unchanged step doesn't need a decision, so it gets no tip at all. Each "summary" is exactly one plain sentence of at most 20 words that a person can decide on in a few seconds, describing what to look for, never a brand or product name.
 
 ## Person's stated profile
 
@@ -255,7 +261,7 @@ ${ownedRows.map(formatRow).join("\n")}${previousRoutineBlock}`;
         dbProductId: s.proposal === "ADD" ? null : s.productId,
         timeOfDay: s.timeOfDay,
         order: s.order,
-        rationale: s.rationale,
+        rationale: tidyText(s.rationale, 110),
         frequencyPerWeek: s.frequencyPerWeek,
         timeCostMinutes: s.timeCostMinutes,
         ownership: (actuallyOwned ? "OWNED" : "NEW") as "OWNED" | "NEW",
@@ -265,7 +271,7 @@ ${ownedRows.map(formatRow).join("\n")}${previousRoutineBlock}`;
         suggestedDescription: s.proposal === "ADD" || isDescriptiveChange ? s.suggestedDescription : null,
         alternativeFrequency: s.proposal === "CHANGE" ? s.alternativeFrequency : null,
         budgetAdjustment: s.budgetAdjustment,
-        budgetAdjustmentReason: s.budgetAdjustment !== "NONE" ? s.budgetAdjustmentReason : null,
+        budgetAdjustmentReason: s.budgetAdjustment !== "NONE" && s.budgetAdjustmentReason ? tidyText(s.budgetAdjustmentReason, 80) : null,
       };
     })
     .filter((s): s is NonNullable<typeof s> => s !== null);
@@ -292,7 +298,7 @@ ${ownedRows.map(formatRow).join("\n")}${previousRoutineBlock}`;
     const agreeing = tips.filter((t) => t.actionType === step.proposal);
     const survivors = agreeing.length > 0 ? agreeing : [tips[0]];
     return {
-      summary: survivors.map((t) => t.summary).join(" "),
+      summary: tidyText(survivors.map((t) => t.summary).join(" "), 130),
       actionType: step.proposal as "ADD" | "REMOVE" | "CHANGE",
       ruleCitation: survivors.find((t) => t.ruleCitation !== null)?.ruleCitation ?? null,
       matchKey: step.matchKey,
@@ -309,7 +315,7 @@ ${ownedRows.map(formatRow).join("\n")}${previousRoutineBlock}`;
       data: {
         userId,
         status: "DRAFT",
-        rationale: parsed.overview,
+        rationale: tidyText(parsed.overview, 200),
         overviewSources: overviewRuleCitations,
       },
     });

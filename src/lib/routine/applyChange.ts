@@ -1,5 +1,6 @@
 import type { RoutineChange } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { tidyText } from "@/lib/text";
 import { insertStep, renumberRoutine } from "./steps";
 import { cleanOps, type ChangeOp, type ChangeView, type DiffLine, type StepCtx } from "./changes";
 
@@ -9,8 +10,11 @@ export function toChangeView(row: RoutineChange): ChangeView {
     kind: row.kind,
     status: row.status,
     trigger: row.trigger,
-    summary: row.summary,
-    consequences: Array.isArray(row.consequences) ? (row.consequences as string[]) : [],
+    summary: tidyText(row.summary, 130),
+    // Older proposals were wordier; show them the same short way.
+    consequences: (Array.isArray(row.consequences) ? (row.consequences as string[]) : [])
+      .map((c) => tidyText(c, 130))
+      .slice(0, row.risk === "conflict" ? 2 : 1),
     risk: row.risk === "caution" || row.risk === "conflict" ? row.risk : "none",
     diff: Array.isArray(row.diff) ? (row.diff as DiffLine[]) : [],
   };
