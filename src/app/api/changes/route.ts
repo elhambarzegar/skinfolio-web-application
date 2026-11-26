@@ -4,6 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { proposeRoutineChange, type ProposeInput } from "@/lib/routine/proposeChange";
 import { toChangeView } from "@/lib/routine/applyChange";
 
+import { overLimit } from "@/lib/limits";
+
+/** Building and checking can take a minute or two; the host must not cut the request short. */
+export const maxDuration = 300;
+
 const KINDS = ["USE_PRODUCT", "PRESCRIBED", "SWAP"] as const;
 
 /** Works out a change and saves it for the person to read. Nothing is changed yet. */
@@ -13,6 +18,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "You need to be signed in." }, { status: 401 });
   }
   const userId = session.user.id;
+
+  const limited = await overLimit("changeProposals", userId);
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 });
 
   const body = await req.json().catch(() => null);
   const kind = KINDS.find((k) => k === body?.kind);

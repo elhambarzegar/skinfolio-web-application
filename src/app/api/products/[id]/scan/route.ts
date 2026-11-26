@@ -5,6 +5,11 @@ import { scanIngredientsFromPhoto } from "@/lib/productLookup/photoScan";
 import { afterLabelPhoto } from "@/lib/communityLibrary";
 import { scoreConfidence, confidenceBucket } from "@/lib/productLookup/confidence";
 
+import { overLimit } from "@/lib/limits";
+
+/** Building and checking can take a minute or two; the host must not cut the request short. */
+export const maxDuration = 300;
+
 const ALLOWED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,6 +17,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!session?.user) {
     return NextResponse.json({ error: "You need to be logged in." }, { status: 401 });
   }
+
+  const limited = await overLimit("labelPhotos", session.user.id);
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 });
 
   const { id } = await params;
   // A photo is of the person's own bottle, so it belongs to their shelf.

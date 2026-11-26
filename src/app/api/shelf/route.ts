@@ -5,6 +5,11 @@ import { addToShelf } from "@/lib/shelf";
 import { lookupMissingSources } from "@/lib/productLookup";
 import { resolveOwnedProducts } from "@/lib/productLookup/resolveOwnedProducts";
 import { productViewsFor } from "@/lib/shelf";
+import { overLimit } from "@/lib/limits";
+
+/** Building and checking can take a minute or two; the host must not cut the request short. */
+export const maxDuration = 300;
+
 
 /**
  * Puts one product on the person's shelf without touching the routine (the
@@ -17,6 +22,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "You need to be signed in." }, { status: 401 });
   }
   const userId = session.user.id;
+
+  const limited = await overLimit("newProducts", userId);
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 });
 
   const body = await req.json().catch(() => null);
   const brand = typeof body?.brand === "string" ? body.brand.trim() : "";

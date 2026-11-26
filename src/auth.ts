@@ -9,6 +9,10 @@ import { linkGoogleAccount, type GoogleProfile } from "@/lib/googleAccount";
 export const googleEnabled = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Needed outside Vercel (Docker, Fly, Railway…), where Auth.js otherwise refuses to run in
+  // production ("UntrustedHost"). In production, set AUTH_URL to the real address (for example
+  // https://sagedew.com) so links and sign-in redirects never depend on the request's Host header.
+  trustHost: true,
   session: { strategy: "jwt" },
   // Errors (for example an unverified Google address) come back to the login
   // page as ?error=..., where a plain-language message is shown.

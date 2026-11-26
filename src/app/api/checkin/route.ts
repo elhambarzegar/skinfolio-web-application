@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { classifyCheckIn, type PriorCheckIn } from "@/lib/checkin/classify";
 import { localNow, safeTimezone } from "@/lib/dates";
+import { overLimit } from "@/lib/limits";
 
 /**
  * Adherence comes from what was ticked off on Today, so the check-in doesn't
@@ -29,11 +30,17 @@ function dayNumberFor(routineCreatedAt: Date, now: Date): number {
   return Math.max(days + 1, 1);
 }
 
+/** The AI check can take a little while; the host must not cut it short. */
+export const maxDuration = 120;
+
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "You need to be logged in." }, { status: 401 });
   }
+
+  const limited = await overLimit("checkIns", session.user.id);
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 });
 
   const body = await req.json().catch(() => null);
   const timeOfDay = body?.timeOfDay === "PM" ? "PM" : body?.timeOfDay === "AM" ? "AM" : null;

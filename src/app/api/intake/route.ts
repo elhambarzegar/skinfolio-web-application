@@ -6,12 +6,16 @@ import { resolveOwnedProducts, type OwnedProductInput } from "@/lib/productLooku
 import { addToShelf } from "@/lib/shelf";
 import { renumberRoutine } from "@/lib/routine/steps";
 import { proposeRoutineChange } from "@/lib/routine/proposeChange";
+import { overLimit } from "@/lib/limits";
 import { describeIntakeChange, detailsChanged, diffShelf } from "@/lib/intakeSync";
 import { EXPERIENCE_OPTIONS, PRIORITY_OPTIONS, COMPLEXITY_OPTIONS } from "@/lib/intakeProfile";
 
 const EXPERIENCE_LEVELS = EXPERIENCE_OPTIONS.map((o) => o.value);
 const PRIORITIES = PRIORITY_OPTIONS.map((o) => o.value);
 const COMPLEXITY_PREFERENCES = COMPLEXITY_OPTIONS.map((o) => o.value);
+
+/** Looking up new products and the background routine check can take a minute or two. */
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -151,6 +155,8 @@ export async function POST(req: Request) {
   if (checking && trigger) {
     after(async () => {
       try {
+        // Same fair-use limit as other routine checks; over it, the check is skipped quietly.
+        if (await overLimit("changeProposals", userId)) return;
         const result = await proposeRoutineChange({ userId, kind: "RECHECK", trigger, subjectProductIds: outcome.added });
         if (!result.ok) console.error("[intake] routine re-check did not complete:", result);
       } catch (err) {
