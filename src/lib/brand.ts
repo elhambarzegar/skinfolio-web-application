@@ -4,6 +4,6 @@
  * reads from this.
  */
 export const BRAND = {
-  name: "Skinfolio",
-  tagline: "Your skincare, one step at a time.",
+  name: "Sagedew",
+  tagline: "A wise guide to fresh skin.",
 } as const;

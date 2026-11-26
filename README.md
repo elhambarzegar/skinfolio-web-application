@@ -1,6 +1,8 @@
-# Skinfolio
+# Sagedew
 
-A personalized skincare routine app: intake → a routine with its reasoning shown → daily check-ins → escalation on adverse reactions. Built as the real, database-backed successor to the Skinfolio capstone prototype.
+A wise guide to fresh skin. An independent skincare consultant (no brands, no stores, nothing to sell) that helps you see which products you actually need: intake → a routine built from what you own, with the reasoning shown → daily tick-offs and progress → changes explained and approved by you. Built as the real, database-backed successor to the Skinfolio capstone prototype.
+
+> Naming note: the database, its Docker container and the Postgres user are still called `skinfolio` internally. They are invisible to users and renaming them would orphan existing local data; a production database is created fresh under whatever name you choose.
 
 ## Stack
 

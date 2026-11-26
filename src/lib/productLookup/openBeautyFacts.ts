@@ -1,4 +1,5 @@
 import { cleanProductName } from "./cleanName";
+import { BRAND } from "@/lib/brand";
 
 type OBFProduct = {
   product_name?: string;
@@ -35,7 +36,7 @@ export async function searchOpenBeautyFacts(
     `&page_size=5&fields=product_name,brands,ingredients_text,last_modified_t,url`;
 
   const res = await fetch(url, {
-    headers: { "User-Agent": "Skinfolio/1.0 (skincare routine app)" },
+    headers: { "User-Agent": `${BRAND.name}/1.0 (skincare routine app)` },
     signal: AbortSignal.timeout(8000),
   });
 

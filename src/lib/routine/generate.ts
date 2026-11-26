@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { confidenceBucket } from "@/lib/productLookup/confidence";
 import { pickSource } from "@/lib/shelf";
 import { tidyText } from "@/lib/text";
+import { BRAND } from "@/lib/brand";
 import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
 import { INGREDIENT_RULES, INTAKE_SAFETY_TRIGGERS, RULE_SOURCES } from "./policy";
 
@@ -79,7 +80,7 @@ export type RoutineGenerationResult =
   | { ok: false; reason: "refused"; severity: "red_flag" | "emergency"; concern: string; routing: string }
   | { ok: false; reason: "agent_error"; message: string };
 
-const SYSTEM_PROMPT = `You are Skinfolio's routine-building assistant. Given a person's skin concerns, their own description of their skin, and the skincare products they currently own, build one ordered AM/PM routine.
+const SYSTEM_PROMPT = `You are ${BRAND.name}'s routine-building assistant. Given a person's skin concerns, their own description of their skin, and the skincare products they currently own, build one ordered AM/PM routine.
 
 Before anything else, check their own words (the "About your skin" text) against the safety triggers policy below. If it matches a red-flag or emergency pattern, refuse to generate a routine — return the "refused" branch with the matching concern and appropriate routing. This check overrides everything else.
 

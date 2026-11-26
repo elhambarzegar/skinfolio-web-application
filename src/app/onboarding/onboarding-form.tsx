@@ -13,6 +13,7 @@ import {
   type ComplexityPreference,
 } from "@/lib/intakeProfile";
 import { ProductSearchRow, type OwnedProductEntry } from "@/components/product-search-row";
+import { BRAND } from "@/lib/brand";
 
 const TOTAL_STEPS = 8;
 
@@ -263,7 +264,7 @@ export function OnboardingForm({ initial }: { initial: OnboardingInitial | null 
         <div>
           <h1 className="page-title">Safety agreement</h1>
           <p className="sub mt-2">
-            A quick read before we start. This sets what {`Skinfolio`} can and can&rsquo;t do for you.
+            A quick read before we start. This sets what {BRAND.name} can and can&rsquo;t do for you.
           </p>
 
           <div className="mt-6 flex flex-col gap-3">
@@ -283,7 +284,7 @@ export function OnboardingForm({ initial }: { initial: OnboardingInitial | null 
           <div className="callout c-sky mt-6">
             <h2>Independent, with nothing to sell</h2>
             <p className="text-[20px] leading-relaxed">
-              Skinfolio isn&rsquo;t owned by, paid by or connected to any skincare brand or store. It never promotes a brand or
+              {BRAND.name} isn&rsquo;t owned by, paid by or connected to any skincare brand or store. It never promotes a brand or
               a product, and it doesn&rsquo;t push a set routine. Think of it as a consultant that cuts through the confusion of
               too many products to buy, and helps you see what you need and what you don&rsquo;t.
             </p>
