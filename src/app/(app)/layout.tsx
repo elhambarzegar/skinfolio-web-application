@@ -16,6 +16,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     where: { id: session.user.id },
     select: { timezone: true },
   });
+  // A sign-in left over from an account that no longer exists.
+  if (!user) {
+    redirect("/login");
+  }
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
@@ -23,7 +27,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <main className="min-w-0 flex-1 px-4 pb-40 pt-8 md:px-12 md:pb-16 md:pt-12">
         <div className="mx-auto w-full max-w-[680px]">{children}</div>
       </main>
-      <TimezoneSync stored={user?.timezone ?? "UTC"} />
+      <TimezoneSync stored={user.timezone} />
     </div>
   );
 }

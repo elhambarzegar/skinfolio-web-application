@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { GoogleButton, OrDivider } from "@/components/google-button";
+import { LegalLinks } from "@/components/legal-page";
 
 export function SignupForm({ googleEnabled }: { googleEnabled: boolean }) {
   const router = useRouter();
@@ -63,6 +64,17 @@ export function SignupForm({ googleEnabled }: { googleEnabled: boolean }) {
           </Link>
           <h1 className="page-title mt-2">Create your account</h1>
           <p className="sub mt-1">Takes about a minute. Your routine comes next.</p>
+          <p className="note mt-3">
+            By creating an account you agree to the{" "}
+            <Link href="/terms" className="underline underline-offset-4">
+              Terms of Use
+            </Link>{" "}
+            and the{" "}
+            <Link href="/privacy" className="underline underline-offset-4">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </div>
 
         {googleEnabled && (
@@ -127,6 +139,7 @@ export function SignupForm({ googleEnabled }: { googleEnabled: boolean }) {
             Sign in
           </Link>
         </p>
+        <LegalLinks />
       </div>
     </div>
   );

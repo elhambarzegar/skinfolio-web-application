@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { GoogleButton, OrDivider } from "@/components/google-button";
+import { LegalLinks } from "@/components/legal-page";
 
 export function LoginForm({ googleEnabled, initialError }: { googleEnabled: boolean; initialError: string | null }) {
   const router = useRouter();
@@ -100,6 +101,7 @@ export function LoginForm({ googleEnabled, initialError }: { googleEnabled: bool
             Create an account
           </Link>
         </p>
+        <LegalLinks />
       </div>
     </div>
   );

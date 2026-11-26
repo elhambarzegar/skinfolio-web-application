@@ -3,14 +3,17 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { EXPERIENCE_LABEL, PRIORITY_LABEL, COMPLEXITY_LABEL } from "@/lib/intakeProfile";
 import { SignOutButton } from "@/components/sign-out-button";
+import { AccountActions } from "@/components/account-actions";
+import { LegalLinks } from "@/components/legal-page";
+import { BRAND } from "@/lib/brand";
 
 export default async function MePage() {
   const session = await auth();
 
-  const intake = await prisma.intakeResponse.findFirst({
-    where: { userId: session!.user.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const [intake, account] = await Promise.all([
+    prisma.intakeResponse.findFirst({ where: { userId: session!.user.id }, orderBy: { createdAt: "desc" } }),
+    prisma.user.findUnique({ where: { id: session!.user.id }, select: { passwordHash: true } }),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -54,7 +57,14 @@ export default async function MePage() {
       <details className="acc">
         <summary>Safety agreement</summary>
         <div className="acc-body">
-          <p>It organizes your skincare routine, explains ingredient interactions, and suggests routines based on your goals.</p>
+          <p>
+            It helps you make sense of what you own, tells you which products you need and which you don&rsquo;t, and explains
+            how ingredients work together.
+          </p>
+          <p>
+            {BRAND.name} isn&rsquo;t owned by, paid by or connected to any skincare brand or store, and never promotes a brand
+            or a product.
+          </p>
           <p>It does not diagnose skin conditions, prescribe treatments, or replace a dermatologist.</p>
           <p>
             If you report pain, bleeding, rapidly changing spots, or other concerning symptoms, we&rsquo;ll recommend seeing a
@@ -63,7 +73,15 @@ export default async function MePage() {
         </div>
       </details>
 
+      <details className="acc">
+        <summary>My data and account</summary>
+        <div className="acc-body">
+          <AccountActions hasPassword={!!account?.passwordHash} />
+        </div>
+      </details>
+
       <SignOutButton />
+      <LegalLinks className="text-center" />
     </div>
   );
 }

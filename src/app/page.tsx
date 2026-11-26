@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
+import { LegalLinks } from "@/components/legal-page";
 
 const principles = [
   {
@@ -55,6 +56,7 @@ export default function Home() {
       <footer className="px-5 py-8 text-center note sm:px-10">
         {BRAND.name} is a personal skincare planning tool, not a medical device. For a diagnosis or a specific skin
         condition, see a board-certified dermatologist.
+        <LegalLinks className="mt-3" />
       </footer>
     </div>
   );

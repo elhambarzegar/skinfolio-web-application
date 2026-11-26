@@ -37,11 +37,13 @@ Build command on the host: `npx prisma migrate deploy && npm run build`. The pro
 
 ## 6. Before real people use it
 
-Not built yet, and needed for a public health-adjacent app:
+Built: **Privacy Policy** (`/privacy`), **Terms of Use** (`/terms`), **download my data** and **delete my account** (Me, then My data and account). Sign-up links to both documents. Still to do:
 
-- **Privacy Policy and Terms pages.** Google also requires them. State plainly: what is stored (account, products, routine, check-ins), that label photos are read and only the ingredient text is kept (the photo itself is not saved), and that the text and photos are processed by Anthropic's API.
-- **Delete my account / my data.** Privacy laws (GDPR, PIPEDA, CCPA) and Google expect it.
-- **Bot protection on sign-up** (for example Cloudflare Turnstile) and a per-IP rate limit at the host's firewall. Per-account daily limits are built in (routine builds, routine checks, label photos, new products, check-ins; see `src/lib/limits.ts`), but nothing stops someone creating many accounts.
+- **Fill in the facts the documents state**, in `src/lib/brand.ts` (`LEGAL`): the real contact mailbox (`privacy@sagedew.com` must exist before launch), the legal name and country of whoever runs the service, and the "last updated" date whenever you change either document.
+- **Have a lawyer read both documents** (the privacy law that applies depends on where you and your users are: for example Canada's PIPEDA, the EU/UK GDPR, California's CCPA). They are written in plain language from what the app actually does, but they are not legal advice, and the Terms deliberately don't name a governing law or court yet.
+- **Name your hosting and database providers** in the Privacy Policy once you've chosen them (it currently says "our hosting and database providers").
+- **Google sign-in** needs the Privacy Policy and Terms links on its consent screen (section 4).
+- **Bot protection on sign-up** (for example Cloudflare Turnstile) and a per-IP rate limit at the host's firewall. Per-account daily limits are built in (`src/lib/limits.ts`), but nothing stops someone creating many accounts.
 - **Emergency wording.** The app refuses and points to a doctor on red-flag symptoms; have someone you trust read the safety wording once.
 
 ## 7. After the first deploy: smoke test
@@ -50,7 +52,8 @@ Not built yet, and needed for a public health-adjacent app:
 2. Redo the intake with two products; build a routine; approve it.
 3. Add a product from the Shelf and approve the change.
 4. Tick a step on Today; open Progress.
-5. Check the host's logs for errors, and the Anthropic console for usage.
+5. Me: download your data, then delete the test account.
+6. Check the host's logs for errors, and the Anthropic console for usage.
 
 ## Database backups
 
